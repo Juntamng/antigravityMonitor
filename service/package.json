@@ -4,6 +4,7 @@
   "description": "Local service for Page Change Monitor — persistence, scheduling, and change detection",
   "main": "index.js",
   "scripts": {
+    "postinstall": "playwright install chromium",
     "start": "node index.js",
     "dev": "node --watch index.js"
   },
