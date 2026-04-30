@@ -1,4 +1,4 @@
-# Page Change Monitor - testing
+# Page Change Monitor
 
 ## Technical Product Development Spec
 
