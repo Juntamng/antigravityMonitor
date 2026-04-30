@@ -1,0 +1,4 @@
+service/.agents/*
+service/node_modules/
+service/package.json
+service/package-lock.json
