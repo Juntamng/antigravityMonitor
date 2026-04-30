@@ -1,4 +1,5 @@
-# Page Change Monitor
+# Page Change Monitor - testing
+
 ## Technical Product Development Spec
 
 ## 1) Product Overview
@@ -178,32 +179,39 @@ flowchart TD
 ## 4) API Surface and Contracts
 
 ### `GET /health`
+
 - **Purpose**: service liveness for popup status dot.
 - **Response**: `{ "ok": true }` on healthy service.
 
 ### `GET /monitors`
+
 - **Purpose**: list monitors with computed `last_checked`.
 - **Response**: array of monitor rows including metadata and latest check timestamp.
 
 ### `POST /monitors`
+
 - **Purpose**: create monitor and schedule it.
 - **Request**: `label`, `url`, `selector`, optional `interval_minutes`, optional `last_value`.
 - **Validation**: `label`, `url`, `selector` required.
 - **Response**: created monitor row.
 
 ### `DELETE /monitors/:id`
+
 - **Purpose**: remove monitor and unschedule.
 - **Response**: `{ "ok": true }`.
 
 ### `POST /monitors/:id/check`
+
 - **Purpose**: trigger immediate check (outside cron cadence).
 - **Response**: `{ "ok": true, "last_value": ... }` or error payload.
 
 ### `GET /monitors/pending-browser-checks`
+
 - **Purpose**: provide monitors flagged for browser-assisted fallback checks.
 - **Response**: array of monitor descriptors (`id`, `label`, `url`, `selector`).
 
 ### `POST /monitors/:id/browser-result`
+
 - **Purpose**: ingest browser-assisted check output from extension.
 - **Request**: `{ value, error }`.
 - **Behavior**:
@@ -212,14 +220,17 @@ flowchart TD
   - writes alert row when a change is detected.
 
 ### `GET /monitors/:id/history`
+
 - **Purpose**: fetch recent check history.
 - **Response**: latest up to 100 rows sorted descending by check time.
 
 ### `GET /alerts/pending`
+
 - **Purpose**: fetch unacknowledged alerts with monitor label.
 - **Response**: joined `alerts + monitors` rows.
 
 ### `POST /alerts/:id/ack`
+
 - **Purpose**: mark alert as acknowledged.
 - **Response**: `{ "ok": true }`.
 
