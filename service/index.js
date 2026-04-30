@@ -5,7 +5,15 @@
  * Loads API routes, auth routes, and starts the monitor scheduler.
  */
 
-require("dotenv").config();
+// `dotenv` is useful locally, but optional in cloud runtimes like Render
+// where environment variables are injected by the platform.
+try {
+  require("dotenv").config();
+} catch (err) {
+  if (err && err.code !== "MODULE_NOT_FOUND") {
+    throw err;
+  }
+}
 
 const express = require("express");
 const cors = require("cors");

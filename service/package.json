@@ -5,8 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js",
-    "build": "echo \"No build step required\""
+    "dev": "node --watch index.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",

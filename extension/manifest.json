@@ -32,7 +32,8 @@
   ],
   "host_permissions": [
     "<all_urls>",
-    "http://localhost:3579/*"
+    "http://localhost:3579/*",
+    "https://antigravitymonitor.onrender.com/*"
   ],
   "commands": {
     "activate-picker": {

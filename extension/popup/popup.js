@@ -15,6 +15,7 @@
   const signOutBtn = document.getElementById("sign-out-btn");
 
   const statusDot = document.getElementById("status-dot");
+  const serviceEnvSelect = document.getElementById("service-env-select");
   const alertsBanner = document.getElementById("alerts-banner");
   const alertsList = document.getElementById("alerts-list");
   const dismissAllBtn = document.getElementById("dismiss-all-btn");
@@ -93,6 +94,7 @@
     loginScreen.style.display = "none";
     appContainer.style.display = "";
     // Initialize app
+    loadServiceEnv();
     checkHealth();
     loadAlerts();
     loadMonitors();
@@ -127,14 +129,37 @@
 
   async function checkHealth() {
     try {
+      const svc = await sendMsg("GET_SERVICE_ENV");
       const resp = await sendMsg("GET_HEALTH");
       statusDot.className = resp?.ok ? "status-dot online" : "status-dot offline";
-      statusDot.title = resp?.ok ? "Service online" : "Service offline";
+      statusDot.title = resp?.ok ? `Service online (${svc?.env || "local"})` : `Service offline (${svc?.env || "local"})`;
     } catch {
       statusDot.className = "status-dot offline";
       statusDot.title = "Service offline";
     }
   }
+
+  async function loadServiceEnv() {
+    try {
+      const svc = await sendMsg("GET_SERVICE_ENV");
+      const env = svc?.env || "local";
+      serviceEnvSelect.value = env;
+      serviceEnvSelect.title = `Backend: ${env}`;
+    } catch {
+      serviceEnvSelect.value = "local";
+    }
+  }
+
+  serviceEnvSelect.addEventListener("change", async () => {
+    const env = serviceEnvSelect.value;
+    serviceEnvSelect.disabled = true;
+    try {
+      await sendMsg("SET_SERVICE_ENV", { env });
+      await Promise.all([checkHealth(), loadMonitors(), loadAlerts()]);
+    } finally {
+      serviceEnvSelect.disabled = false;
+    }
+  });
 
   // ── Alerts ────────────────────────────────────────────
 

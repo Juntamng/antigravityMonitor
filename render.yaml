@@ -1,7 +1,0 @@
-services:
-  - type: web
-    name: antigravity-monitor-service
-    runtime: node
-    rootDir: service
-    buildCommand: npm ci && npx playwright install chromium
-    startCommand: npm start
