@@ -7,92 +7,118 @@
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <!-- ── Header ──────────────────────────────────────── -->
-    <div class="header">
-      <div class="header-left">
-        <div class="header-logo">👁</div>
-        <h1>Page Monitor</h1>
-      </div>
-      <div class="header-actions">
-        <div class="status-dot" id="status-dot" title="Service status"></div>
+    <!-- ── Login Screen ─────────────────────────────────── -->
+    <div class="login-screen" id="login-screen">
+      <div class="login-content">
+        <div class="login-logo">👁</div>
+        <h1 class="login-title">Page Monitor</h1>
+        <p class="login-desc">
+          Monitor any element on any webpage<br />
+          for content changes and get instant alerts.
+        </p>
+        <button class="btn btn-google" id="google-sign-in-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18A10.96 10.96 0 0 0 1 12c0 1.77.42 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+          </svg>
+          Sign in with Google
+        </button>
+        <div class="login-status" id="login-status"></div>
       </div>
     </div>
 
-    <!-- ── Alerts Banner ───────────────────────────────── -->
-    <div class="alerts-banner" id="alerts-banner">
-      <div class="alerts-header">
-        <span>🔔 Unread Changes</span>
-        <button class="btn btn-ghost btn-sm" id="dismiss-all-btn">Clear All</button>
-      </div>
-      <div id="alerts-list"></div>
-    </div>
-
-    <!-- ── Confirm Selection ───────────────────────────── -->
-    <div class="confirm-section" id="confirm-section">
-      <div class="section-title">New Monitor</div>
-      <div class="confirm-preview" id="confirm-preview"></div>
-      <div class="form-group">
-        <label class="form-label" for="monitor-label">Label</label>
-        <input
-          type="text"
-          class="form-input"
-          id="monitor-label"
-          placeholder="e.g. Product Price"
-          maxlength="100"
-        />
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label" for="monitor-interval">Check every (min)</label>
-          <input
-            type="number"
-            class="form-input"
-            id="monitor-interval"
-            value="5"
-            min="1"
-            max="1440"
-          />
+    <!-- ── App (hidden until logged in) ─────────────────── -->
+    <div class="app-container" id="app-container" style="display: none;">
+      <!-- ── Header ──────────────────────────────────────── -->
+      <div class="header">
+        <div class="header-left">
+          <div class="header-logo">👁</div>
+          <h1>Page Monitor</h1>
+        </div>
+        <div class="header-actions">
+          <div class="status-dot" id="status-dot" title="Service status"></div>
+          <button class="btn btn-ghost btn-sm" id="sign-out-btn" title="Sign out">↪ Out</button>
         </div>
       </div>
-      <div class="confirm-actions">
-        <button class="btn btn-ghost" id="cancel-confirm-btn">Cancel</button>
-        <button class="btn btn-primary" id="save-monitor-btn">
-          Start Monitoring
-        </button>
+
+      <!-- ── Alerts Banner ───────────────────────────────── -->
+      <div class="alerts-banner" id="alerts-banner">
+        <div class="alerts-header">
+          <span>🔔 Unread Changes</span>
+          <button class="btn btn-ghost btn-sm" id="dismiss-all-btn">Clear All</button>
+        </div>
+        <div id="alerts-list"></div>
       </div>
-    </div>
 
-    <!-- ── Picker Action ───────────────────────────────── -->
-    <div class="picker-bar" id="picker-bar">
-      <button class="btn btn-primary" id="pick-element-btn">
-        🎯 Pick Element
-      </button>
-      <span class="picker-hint">or press <kbd style="font-family:monospace;background:#1c1c30;padding:1px 5px;border-radius:3px;font-size:11px;border:1px solid rgba(99,102,241,0.2)">Alt+Shift+P</kbd></span>
-    </div>
+      <!-- ── Confirm Selection ───────────────────────────── -->
+      <div class="confirm-section" id="confirm-section">
+        <div class="section-title">New Monitor</div>
+        <div class="confirm-preview" id="confirm-preview"></div>
+        <div class="form-group">
+          <label class="form-label" for="monitor-label">Label</label>
+          <input
+            type="text"
+            class="form-input"
+            id="monitor-label"
+            placeholder="e.g. Product Price"
+            maxlength="100"
+          />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="monitor-interval">Check every (min)</label>
+            <input
+              type="number"
+              class="form-input"
+              id="monitor-interval"
+              value="5"
+              min="1"
+              max="1440"
+            />
+          </div>
+        </div>
+        <div class="confirm-actions">
+          <button class="btn btn-ghost" id="cancel-confirm-btn">Cancel</button>
+          <button class="btn btn-primary" id="save-monitor-btn">
+            Start Monitoring
+          </button>
+        </div>
+      </div>
 
-    <!-- ── Monitor List ────────────────────────────────── -->
-    <div class="section" id="monitors-section">
-      <div class="section-title">Monitors</div>
-      <div id="monitor-list">
-        <div class="empty-state" id="empty-state">
-          <div class="empty-icon">📡</div>
-          <div class="empty-title">No monitors yet</div>
-          <div class="empty-desc">
-            Pick an element on any page to start<br />
-            monitoring it for changes.
+      <!-- ── Picker Action ───────────────────────────────── -->
+      <div class="picker-bar" id="picker-bar">
+        <button class="btn btn-primary" id="pick-element-btn">
+          🎯 Pick Element
+        </button>
+        <span class="picker-hint">or press <kbd style="font-family:monospace;background:#1c1c30;padding:1px 5px;border-radius:3px;font-size:11px;border:1px solid rgba(99,102,241,0.2)">Alt+Shift+P</kbd></span>
+      </div>
+
+      <!-- ── Monitor List ────────────────────────────────── -->
+      <div class="section" id="monitors-section">
+        <div class="section-title">Monitors</div>
+        <div id="monitor-list">
+          <div class="empty-state" id="empty-state">
+            <div class="empty-icon">📡</div>
+            <div class="empty-title">No monitors yet</div>
+            <div class="empty-desc">
+              Pick an element on any page to start<br />
+              monitoring it for changes.
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- ── History View ────────────────────────────────── -->
-    <div class="history-section" id="history-section">
-      <div class="history-back" id="history-back">
-        ← Back to monitors
-      </div>
-      <div class="section" style="padding-top:8px">
-        <div class="section-title" id="history-title">History</div>
-        <div id="history-list"></div>
+      <!-- ── History View ────────────────────────────────── -->
+      <div class="history-section" id="history-section">
+        <div class="history-back" id="history-back">
+          ← Back to monitors
+        </div>
+        <div class="section" style="padding-top:8px">
+          <div class="section-title" id="history-title">History</div>
+          <div id="history-list"></div>
+        </div>
       </div>
     </div>
 

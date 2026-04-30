@@ -1,33 +1,53 @@
 /**
  * api.js — Express router
  *
- * All 10 REST endpoints consumed by the Chrome extension.
+ * All REST endpoints consumed by the Chrome extension.
+ * Protected routes require a valid Supabase JWT in the
+ * Authorization: Bearer <token> header.
  */
 
 const { Router } = require("express");
-const { stmts } = require("./db");
+const db = require("./db");
 const { scheduleMonitor, unscheduleMonitor, runCheck } = require("./scheduler");
 
 const router = Router();
 
-// ── Health ──────────────────────────────────────────────
+// ── Auth Middleware ──────────────────────────────────────
+
+async function requireAuth(req, res, next) {
+  const authHeader = req.headers["authorization"] || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+  if (!token) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+
+  try {
+    req.user = await db.getUserFromToken(token);
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: "Invalid or expired token" });
+  }
+}
+
+// ── Health (public) ──────────────────────────────────────
 
 router.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-// ── Monitors CRUD ───────────────────────────────────────
+// ── Monitors CRUD ────────────────────────────────────────
 
-router.get("/monitors", (_req, res) => {
+router.get("/monitors", requireAuth, async (req, res) => {
   try {
-    const monitors = stmts.getAllMonitors.all();
+    const monitors = await db.getAllMonitors(req.user.id);
     res.json(monitors);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post("/monitors", (req, res) => {
+router.post("/monitors", requireAuth, async (req, res) => {
   try {
     const { label, url, selector, interval_minutes = 5, last_value = null } = req.body;
 
@@ -35,86 +55,85 @@ router.post("/monitors", (req, res) => {
       return res.status(400).json({ error: "label, url, and selector are required" });
     }
 
-    const result = stmts.createMonitor.run(
+    const monitor = await db.createMonitor({
+      userId: req.user.id,
       label,
       url,
       selector,
       interval_minutes,
-      last_value
-    );
+      last_value,
+    });
 
-    const monitor = stmts.getMonitor.get(result.lastInsertRowid);
     scheduleMonitor(monitor);
-
     res.status(201).json(monitor);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.delete("/monitors/:id", (req, res) => {
+router.delete("/monitors/:id", requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     unscheduleMonitor(id);
-    stmts.deleteMonitor.run(id);
+    await db.deleteMonitor(id);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── Immediate check ─────────────────────────────────────
+// ── Immediate check ──────────────────────────────────────
 
-router.post("/monitors/:id/check", async (req, res) => {
+router.post("/monitors/:id/check", requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const result = await runCheck(id);
-    res.json({ ok: true, last_value: result.value, changed: result.changed });
+    res.json({ ok: true, last_value: result?.value, changed: result?.changed });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── Browser-assisted checks ────────────────────────────
+// ── Browser-assisted checks ──────────────────────────────
 
-router.get("/monitors/pending-browser-checks", (_req, res) => {
+router.get("/monitors/pending-browser-checks", requireAuth, async (req, res) => {
   try {
-    const pending = stmts.getPendingBrowserChecks.all();
+    const pending = await db.getPendingBrowserChecks();
     res.json(pending);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post("/monitors/:id/browser-result", (req, res) => {
+router.post("/monitors/:id/browser-result", requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { value, error } = req.body;
 
     // Always clear the pending flag
-    stmts.clearBrowserCheck.run(id);
+    await db.clearBrowserCheck(id);
 
     if (error) {
-      stmts.insertHistory.run(id, null, error);
+      await db.insertHistory(id, null, error);
       return res.json({ ok: true, error });
     }
 
-    const monitor = stmts.getMonitor.get(id);
+    const monitor = await db.getMonitor(id);
     if (!monitor) {
       return res.status(404).json({ error: "Monitor not found" });
     }
 
     // Write history
-    stmts.insertHistory.run(id, value, null);
+    await db.insertHistory(id, value, null);
 
     // Detect change
     const oldValue = monitor.last_value;
     if (oldValue !== null && oldValue !== value) {
-      stmts.insertAlert.run(id, oldValue, value);
+      await db.insertAlert(id, oldValue, value);
     }
 
     // Update value
-    stmts.updateMonitorValue.run(value, id);
+    await db.updateMonitorValue(id, value);
 
     res.json({ ok: true, changed: oldValue !== null && oldValue !== value });
   } catch (err) {
@@ -122,33 +141,33 @@ router.post("/monitors/:id/browser-result", (req, res) => {
   }
 });
 
-// ── History ─────────────────────────────────────────────
+// ── History ──────────────────────────────────────────────
 
-router.get("/monitors/:id/history", (req, res) => {
+router.get("/monitors/:id/history", requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const history = stmts.getHistory.all(id);
+    const history = await db.getHistory(id);
     res.json(history);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── Alerts ──────────────────────────────────────────────
+// ── Alerts ───────────────────────────────────────────────
 
-router.get("/alerts/pending", (_req, res) => {
+router.get("/alerts/pending", requireAuth, async (req, res) => {
   try {
-    const alerts = stmts.getPendingAlerts.all();
+    const alerts = await db.getPendingAlerts(req.user.id);
     res.json(alerts);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post("/alerts/:id/ack", (req, res) => {
+router.post("/alerts/:id/ack", requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
-    stmts.ackAlert.run(id);
+    await db.ackAlert(id);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

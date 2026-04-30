@@ -1,162 +1,224 @@
 /**
- * db.js — SQLite persistence layer
+ * db.js — Supabase persistence layer
  *
- * Uses Node.js built-in node:sqlite (--experimental-sqlite).
- * Database stored at ~/.page-monitor/data.db with WAL mode
- * and foreign-key enforcement.
+ * Replaces node:sqlite with @supabase/supabase-js.
+ * Uses the service_role key so the backend can access all rows
+ * regardless of RLS policies (trusted server context).
  *
- * Tables: monitors, history, alerts
+ * All functions are async and return data directly or throw on error.
  */
 
-const { DatabaseSync } = require("node:sqlite");
-const path = require("node:path");
-const fs = require("node:fs");
-const os = require("node:os");
+require("dotenv").config();
+const { createClient } = require("@supabase/supabase-js");
 
-const DB_DIR = path.join(os.homedir(), ".page-monitor");
-const DB_PATH = path.join(DB_DIR, "data.db");
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-// Ensure directory exists
-fs.mkdirSync(DB_DIR, { recursive: true });
-
-const db = new DatabaseSync(DB_PATH);
-
-// Enable WAL mode and foreign keys
-db.exec("PRAGMA journal_mode = WAL");
-db.exec("PRAGMA foreign_keys = ON");
-
-// ── Schema ──────────────────────────────────────────────
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS monitors (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    label         TEXT    NOT NULL,
-    url           TEXT    NOT NULL,
-    selector      TEXT    NOT NULL,
-    interval_minutes INTEGER NOT NULL DEFAULT 5,
-    last_value    TEXT,
-    created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
-    active        INTEGER NOT NULL DEFAULT 1
-  )
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS history (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    monitor_id  INTEGER NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
-    value       TEXT,
-    checked_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-    error       TEXT
-  )
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS alerts (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    monitor_id  INTEGER NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
-    old_value   TEXT,
-    new_value   TEXT,
-    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-    acked       INTEGER NOT NULL DEFAULT 0
-  )
-`);
-
-// ── Idempotent migrations ───────────────────────────────
-
-function columnExists(table, column) {
-  const info = db.prepare(`PRAGMA table_info(${table})`).all();
-  return info.some((col) => col.name === column);
-}
-
-if (!columnExists("monitors", "active")) {
-  db.exec(
-    "ALTER TABLE monitors ADD COLUMN active INTEGER NOT NULL DEFAULT 1"
+if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+  console.error(
+    "\n  ❌  Missing SUPABASE_URL or SUPABASE_SERVICE_KEY in .env\n" +
+    "     Copy your service_role key from:\n" +
+    "     Supabase Dashboard → Project Settings → API → service_role\n"
   );
+  process.exit(1);
 }
 
-if (!columnExists("monitors", "pending_browser_check")) {
-  db.exec(
-    "ALTER TABLE monitors ADD COLUMN pending_browser_check INTEGER NOT NULL DEFAULT 0"
-  );
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+  auth: { persistSession: false },
+});
+
+// ── Monitors ─────────────────────────────────────────────
+
+async function getAllMonitors(userId) {
+  const { data, error } = await supabase
+    .from("monitors")
+    .select(`
+      *,
+      last_checked:history(checked_at)
+    `)
+    .eq("user_id", userId)
+    .eq("active", true)
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(error.message);
+
+  // Flatten last_checked to a single timestamp
+  return data.map((m) => {
+    const checks = m.last_checked || [];
+    const latest = checks.reduce((max, h) => {
+      return !max || h.checked_at > max ? h.checked_at : max;
+    }, null);
+    return { ...m, last_checked: latest };
+  });
 }
 
-if (!columnExists("monitors", "check_method")) {
-  db.exec(
-    "ALTER TABLE monitors ADD COLUMN check_method TEXT NOT NULL DEFAULT 'auto'"
-  );
+async function getMonitor(id) {
+  const { data, error } = await supabase
+    .from("monitors")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
 }
 
-if (!columnExists("history", "error")) {
-  db.exec("ALTER TABLE history ADD COLUMN error TEXT");
+async function createMonitor({ userId, label, url, selector, interval_minutes = 5, last_value = null }) {
+  const { data, error } = await supabase
+    .from("monitors")
+    .insert({
+      user_id: userId,
+      label,
+      url,
+      selector,
+      interval_minutes,
+      last_value,
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
 }
 
-// ── Prepared statements ─────────────────────────────────
+async function deleteMonitor(id) {
+  const { error } = await supabase
+    .from("monitors")
+    .update({ active: false })
+    .eq("id", id);
 
-const stmts = {
+  if (error) throw new Error(error.message);
+}
+
+async function updateMonitorValue(id, value) {
+  const { error } = await supabase
+    .from("monitors")
+    .update({ last_value: value })
+    .eq("id", id);
+
+  if (error) throw new Error(error.message);
+}
+
+async function flagBrowserCheck(id) {
+  const { error } = await supabase
+    .from("monitors")
+    .update({ pending_browser_check: true })
+    .eq("id", id);
+
+  if (error) throw new Error(error.message);
+}
+
+async function clearBrowserCheck(id) {
+  const { error } = await supabase
+    .from("monitors")
+    .update({ pending_browser_check: false })
+    .eq("id", id);
+
+  if (error) throw new Error(error.message);
+}
+
+async function getPendingBrowserChecks() {
+  const { data, error } = await supabase
+    .from("monitors")
+    .select("id, label, url, selector")
+    .eq("active", true)
+    .eq("pending_browser_check", true);
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// ── History ──────────────────────────────────────────────
+
+async function insertHistory(monitorId, value, errorMsg) {
+  const { error } = await supabase
+    .from("history")
+    .insert({ monitor_id: monitorId, value, error: errorMsg });
+
+  if (error) throw new Error(error.message);
+}
+
+async function getHistory(monitorId) {
+  const { data, error } = await supabase
+    .from("history")
+    .select("*")
+    .eq("monitor_id", monitorId)
+    .order("checked_at", { ascending: false })
+    .limit(100);
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// ── Alerts ───────────────────────────────────────────────
+
+async function insertAlert(monitorId, oldValue, newValue) {
+  const { error } = await supabase
+    .from("alerts")
+    .insert({ monitor_id: monitorId, old_value: oldValue, new_value: newValue });
+
+  if (error) throw new Error(error.message);
+}
+
+async function getPendingAlerts(userId) {
+  const { data, error } = await supabase
+    .from("alerts")
+    .select(`
+      *,
+      monitors!inner(label, user_id)
+    `)
+    .eq("acked", false)
+    .eq("monitors.user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(error.message);
+
+  // Flatten monitor_label for API compatibility
+  return data.map((a) => ({
+    ...a,
+    monitor_label: a.monitors?.label,
+    monitors: undefined,
+  }));
+}
+
+async function ackAlert(id) {
+  const { error } = await supabase
+    .from("alerts")
+    .update({ acked: true })
+    .eq("id", id);
+
+  if (error) throw new Error(error.message);
+}
+
+// ── Auth helper ──────────────────────────────────────────
+
+/**
+ * Verify a JWT and return the user object, or throw.
+ */
+async function getUserFromToken(token) {
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data?.user) throw new Error("Invalid or expired token");
+  return data.user;
+}
+
+module.exports = {
+  supabase,
   // Monitors
-  getAllMonitors: db.prepare(`
-    SELECT m.*,
-           (SELECT MAX(checked_at) FROM history WHERE monitor_id = m.id) AS last_checked
-    FROM monitors m
-    WHERE m.active = 1
-    ORDER BY m.created_at DESC
-  `),
-
-  getMonitor: db.prepare("SELECT * FROM monitors WHERE id = ?"),
-
-  createMonitor: db.prepare(`
-    INSERT INTO monitors (label, url, selector, interval_minutes, last_value)
-    VALUES (?, ?, ?, ?, ?)
-  `),
-
-  deleteMonitor: db.prepare("UPDATE monitors SET active = 0 WHERE id = ?"),
-
-  updateMonitorValue: db.prepare(
-    "UPDATE monitors SET last_value = ? WHERE id = ?"
-  ),
-
-  flagBrowserCheck: db.prepare(
-    "UPDATE monitors SET pending_browser_check = 1 WHERE id = ?"
-  ),
-
-  clearBrowserCheck: db.prepare(
-    "UPDATE monitors SET pending_browser_check = 0 WHERE id = ?"
-  ),
-
-  getPendingBrowserChecks: db.prepare(`
-    SELECT id, label, url, selector
-    FROM monitors
-    WHERE active = 1 AND pending_browser_check = 1
-  `),
-
+  getAllMonitors,
+  getMonitor,
+  createMonitor,
+  deleteMonitor,
+  updateMonitorValue,
+  flagBrowserCheck,
+  clearBrowserCheck,
+  getPendingBrowserChecks,
   // History
-  insertHistory: db.prepare(`
-    INSERT INTO history (monitor_id, value, error)
-    VALUES (?, ?, ?)
-  `),
-
-  getHistory: db.prepare(`
-    SELECT * FROM history
-    WHERE monitor_id = ?
-    ORDER BY checked_at DESC
-    LIMIT 100
-  `),
-
+  insertHistory,
+  getHistory,
   // Alerts
-  insertAlert: db.prepare(`
-    INSERT INTO alerts (monitor_id, old_value, new_value)
-    VALUES (?, ?, ?)
-  `),
-
-  getPendingAlerts: db.prepare(`
-    SELECT a.*, m.label AS monitor_label
-    FROM alerts a
-    JOIN monitors m ON a.monitor_id = m.id
-    WHERE a.acked = 0
-    ORDER BY a.created_at DESC
-  `),
-
-  ackAlert: db.prepare("UPDATE alerts SET acked = 1 WHERE id = ?"),
+  insertAlert,
+  getPendingAlerts,
+  ackAlert,
+  // Auth
+  getUserFromToken,
 };
-
-module.exports = { db, stmts, DB_PATH };

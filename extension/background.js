@@ -2,6 +2,7 @@
  * background.js — Extension service worker
  *
  * Responsibilities:
+ *   - Authentication: Google OAuth flow via Supabase, token management
  *   - Message bus bridging popup/content ↔ local service API
  *   - Pending picked element in session storage
  *   - Alarm-driven periodic jobs (browser checks, alert polling)
@@ -9,6 +10,24 @@
  */
 
 const SERVICE_URL = "http://localhost:3579";
+
+// ── Auth Token Management ─────────────────────────────────
+
+async function getAuthToken() {
+  const { authSession } = await chrome.storage.local.get("authSession");
+  return authSession?.access_token || null;
+}
+
+async function getAuthHeaders() {
+  const token = await getAuthToken();
+  if (!token) return {};
+  return { Authorization: `Bearer ${token}` };
+}
+
+async function isLoggedIn() {
+  const token = await getAuthToken();
+  return !!token;
+}
 
 // ── Alarms Setup ──────────────────────────────────────────
 
@@ -25,6 +44,8 @@ chrome.runtime.onStartup.addListener(() => {
 // ── Alarm Handler ─────────────────────────────────────────
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (!(await isLoggedIn())) return; // Skip if not logged in
+
   if (alarm.name === "browser-checks") {
     await handleBrowserChecks();
   } else if (alarm.name === "poll-alerts") {
@@ -36,7 +57,9 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
 async function handleBrowserChecks() {
   try {
-    const resp = await fetch(`${SERVICE_URL}/monitors/pending-browser-checks`);
+    const headers = await getAuthHeaders();
+    const resp = await fetch(`${SERVICE_URL}/monitors/pending-browser-checks`, { headers });
+    if (!resp.ok) return;
     const monitors = await resp.json();
 
     for (const monitor of monitors) {
@@ -84,9 +107,10 @@ async function executeBrowserCheck(monitor) {
     const result = results?.[0]?.result || { error: "No result" };
 
     // Post result to service
+    const headers = await getAuthHeaders();
     await fetch(`${SERVICE_URL}/monitors/${monitor.id}/browser-result`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify(result),
     });
 
@@ -94,9 +118,10 @@ async function executeBrowserCheck(monitor) {
   } catch (err) {
     console.error(`[bg] Browser check failed for monitor ${monitor.id}:`, err.message);
     try {
+      const headers = await getAuthHeaders();
       await fetch(`${SERVICE_URL}/monitors/${monitor.id}/browser-result`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({ error: err.message }),
       });
     } catch {
@@ -113,7 +138,9 @@ async function executeBrowserCheck(monitor) {
 
 async function handleAlertPolling() {
   try {
-    const resp = await fetch(`${SERVICE_URL}/alerts/pending`);
+    const headers = await getAuthHeaders();
+    const resp = await fetch(`${SERVICE_URL}/alerts/pending`, { headers });
+    if (!resp.ok) return;
     const alerts = await resp.json();
 
     if (alerts.length === 0) return;
@@ -145,8 +172,8 @@ async function handleAlertPolling() {
 
       // In-page toast on all matching tabs
       try {
-        // Get the monitor to find its URL
-        const monResp = await fetch(`${SERVICE_URL}/monitors`);
+        const monResp = await fetch(`${SERVICE_URL}/monitors`, { headers });
+        if (!monResp.ok) continue;
         const monitors = await monResp.json();
         const monitor = monitors.find((m) => m.id === alert.monitor_id);
 
@@ -177,6 +204,7 @@ async function handleAlertPolling() {
       try {
         await fetch(`${SERVICE_URL}/alerts/${alert.id}/ack`, {
           method: "POST",
+          headers,
         });
       } catch {
         /* will retry next poll */
@@ -192,6 +220,52 @@ function truncate(str, max = 50) {
   return str.length > max ? str.slice(0, max) + "…" : str;
 }
 
+// ── OAuth Callback Tab Interception ───────────────────────
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  // Watch for the auth callback URL
+  if (
+    changeInfo.status === "complete" &&
+    tab.url &&
+    tab.url.startsWith(`${SERVICE_URL}/auth/callback`)
+  ) {
+    // Give the page a moment to process the hash fragment
+    await new Promise((r) => setTimeout(r, 1000));
+
+    // Read the title which contains the auth tokens
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => document.title,
+      });
+
+      const title = results?.[0]?.result || "";
+
+      if (title.startsWith("PAGE_MONITOR_AUTH:")) {
+        const tokenData = JSON.parse(title.replace("PAGE_MONITOR_AUTH:", ""));
+
+        if (tokenData.access_token) {
+          // Store the session
+          await chrome.storage.local.set({ authSession: tokenData });
+
+          console.log("[bg] Auth tokens stored successfully");
+
+          // Close the auth tab
+          chrome.tabs.remove(tabId).catch(() => {});
+
+          // Clear any auth-related badge
+          chrome.action.setBadgeText({ text: "" });
+
+          // Notify any open popup
+          chrome.runtime.sendMessage({ type: "AUTH_STATE_CHANGED", loggedIn: true }).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.error("[bg] Failed to extract auth tokens:", err.message);
+    }
+  }
+});
+
 // ── Message Bus ───────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -205,12 +279,31 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 const messageHandlers = {
-  // Element picked from content script
+  // ── Auth ──────────────────────────────────────────────
+
+  async SIGN_IN() {
+    // Open the Google OAuth flow in a new tab
+    const authUrl = `${SERVICE_URL}/auth/google`;
+    await chrome.tabs.create({ url: authUrl });
+    return { ok: true };
+  },
+
+  async SIGN_OUT() {
+    await chrome.storage.local.remove("authSession");
+    await chrome.storage.local.set({ unreadAlerts: [] });
+    chrome.action.setBadgeText({ text: "" });
+    return { ok: true };
+  },
+
+  async GET_AUTH_STATE() {
+    const { authSession } = await chrome.storage.local.get("authSession");
+    return { loggedIn: !!authSession?.access_token };
+  },
+
+  // ── Element picked from content script ────────────────
+
   async ELEMENT_PICKED(msg) {
     await chrome.storage.session.set({ pendingElement: msg.payload });
-    // Open popup by focusing extension action
-    // We need to use a workaround since we can't programmatically open popup
-    // Store in session and badge to alert user
     chrome.action.setBadgeText({ text: "1" });
     chrome.action.setBadgeBackgroundColor({ color: "#6366f1" });
     return { ok: true };
@@ -238,42 +331,52 @@ const messageHandlers = {
     return { ok: true };
   },
 
-  // Service API proxies
+  // ── Service API proxies ──────────────────────────────
+
   async GET_HEALTH() {
     const resp = await fetch(`${SERVICE_URL}/health`);
     return resp.json();
   },
 
   async GET_MONITORS() {
-    const resp = await fetch(`${SERVICE_URL}/monitors`);
+    const headers = await getAuthHeaders();
+    const resp = await fetch(`${SERVICE_URL}/monitors`, { headers });
+    if (!resp.ok) throw new Error("Unauthorized");
     return resp.json();
   },
 
   async CREATE_MONITOR(msg) {
+    const headers = await getAuthHeaders();
     const resp = await fetch(`${SERVICE_URL}/monitors`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify(msg.payload),
     });
+    if (!resp.ok) throw new Error("Failed to create monitor");
     return resp.json();
   },
 
   async DELETE_MONITOR(msg) {
+    const headers = await getAuthHeaders();
     const resp = await fetch(`${SERVICE_URL}/monitors/${msg.payload.id}`, {
       method: "DELETE",
+      headers,
     });
     return resp.json();
   },
 
   async CHECK_MONITOR(msg) {
+    const headers = await getAuthHeaders();
     const resp = await fetch(`${SERVICE_URL}/monitors/${msg.payload.id}/check`, {
       method: "POST",
+      headers,
     });
     return resp.json();
   },
 
   async GET_HISTORY(msg) {
-    const resp = await fetch(`${SERVICE_URL}/monitors/${msg.payload.id}/history`);
+    const headers = await getAuthHeaders();
+    const resp = await fetch(`${SERVICE_URL}/monitors/${msg.payload.id}/history`, { headers });
     return resp.json();
   },
 

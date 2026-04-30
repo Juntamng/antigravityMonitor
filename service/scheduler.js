@@ -3,10 +3,12 @@
  *
  * Manages per-monitor cron jobs keyed by monitor ID.
  * runCheck() performs the check → compare → history → alert pipeline.
+ *
+ * All database operations are async (Supabase).
  */
 
 const cron = require("node-cron");
-const { stmts } = require("./db");
+const db = require("./db");
 const { checkSelector } = require("./checker");
 
 /** @type {Map<number, import('node-cron').ScheduledTask>} */
@@ -32,7 +34,7 @@ function intervalToCron(minutes) {
  * Core check pipeline for a single monitor.
  */
 async function runCheck(monitorId) {
-  const monitor = stmts.getMonitor.get(monitorId);
+  const monitor = await db.getMonitor(monitorId);
   if (!monitor || !monitor.active) return;
 
   console.log(`[scheduler] Running check for monitor ${monitorId}: "${monitor.label}"`);
@@ -41,24 +43,24 @@ async function runCheck(monitorId) {
     const newValue = await checkSelector(monitor);
 
     // Write history
-    stmts.insertHistory.run(monitorId, newValue, null);
+    await db.insertHistory(monitorId, newValue, null);
 
     // Compare with last value
     const oldValue = monitor.last_value;
     if (oldValue !== null && oldValue !== newValue) {
       console.log(`[scheduler] Change detected on monitor ${monitorId}: "${oldValue}" → "${newValue}"`);
-      stmts.insertAlert.run(monitorId, oldValue, newValue);
+      await db.insertAlert(monitorId, oldValue, newValue);
     }
 
     // Update current value
-    stmts.updateMonitorValue.run(newValue, monitorId);
+    await db.updateMonitorValue(monitorId, newValue);
 
     return { value: newValue, changed: oldValue !== null && oldValue !== newValue };
   } catch (err) {
     console.error(`[scheduler] Check failed for monitor ${monitorId}:`, err.message);
 
     // Write error to history
-    stmts.insertHistory.run(monitorId, null, err.message);
+    await db.insertHistory(monitorId, null, err.message);
 
     // If timeout-like, flag for browser-assisted check
     if (
@@ -68,7 +70,7 @@ async function runCheck(monitorId) {
       err.message.includes("Navigation failed")
     ) {
       console.log(`[scheduler] Flagging monitor ${monitorId} for browser-assisted check`);
-      stmts.flagBrowserCheck.run(monitorId);
+      await db.flagBrowserCheck(monitorId);
     }
 
     throw err;
@@ -108,9 +110,20 @@ function unscheduleMonitor(monitorId) {
 /**
  * Load all active monitors and schedule them.
  * Called once at server startup.
+ *
+ * Since we need all monitors regardless of user, we query directly.
  */
-function loadAllSchedules() {
-  const monitors = stmts.getAllMonitors.all();
+async function loadAllSchedules() {
+  const { data: monitors, error } = await db.supabase
+    .from("monitors")
+    .select("*")
+    .eq("active", true);
+
+  if (error) {
+    console.error("[scheduler] Failed to load monitors:", error.message);
+    return;
+  }
+
   console.log(`[scheduler] Loading ${monitors.length} active monitor(s)`);
   for (const m of monitors) {
     scheduleMonitor(m);

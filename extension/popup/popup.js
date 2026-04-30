@@ -1,12 +1,18 @@
 /**
  * popup.js — Popup application logic
  *
- * Manages monitor list, confirm-selection form, history view,
- * alerts banner, and service health indicator.
+ * Manages authentication state, monitor list, confirm-selection form,
+ * history view, alerts banner, and service health indicator.
  */
 
 (() => {
   // ── DOM refs ──────────────────────────────────────────
+
+  const loginScreen = document.getElementById("login-screen");
+  const appContainer = document.getElementById("app-container");
+  const googleSignInBtn = document.getElementById("google-sign-in-btn");
+  const loginStatus = document.getElementById("login-status");
+  const signOutBtn = document.getElementById("sign-out-btn");
 
   const statusDot = document.getElementById("status-dot");
   const alertsBanner = document.getElementById("alerts-banner");
@@ -50,7 +56,7 @@
   function relativeTime(dateStr) {
     if (!dateStr) return "never";
     const now = Date.now();
-    const then = new Date(dateStr + "Z").getTime(); // SQLite stores UTC
+    const then = new Date(dateStr).getTime();
     const diff = Math.floor((now - then) / 1000);
     if (diff < 10) return "just now";
     if (diff < 60) return `${diff}s ago`;
@@ -66,6 +72,56 @@
       });
     });
   }
+
+  // ── Auth ──────────────────────────────────────────────
+
+  async function checkAuthState() {
+    const result = await sendMsg("GET_AUTH_STATE");
+    if (result?.loggedIn) {
+      showApp();
+    } else {
+      showLogin();
+    }
+  }
+
+  function showLogin() {
+    loginScreen.style.display = "";
+    appContainer.style.display = "none";
+  }
+
+  function showApp() {
+    loginScreen.style.display = "none";
+    appContainer.style.display = "";
+    // Initialize app
+    checkHealth();
+    loadAlerts();
+    loadMonitors();
+    checkPendingElement();
+  }
+
+  googleSignInBtn.addEventListener("click", async () => {
+    loginStatus.textContent = "Opening Google Sign-In…";
+    loginStatus.className = "login-status";
+    try {
+      await sendMsg("SIGN_IN");
+      loginStatus.textContent = "Complete sign-in in the opened tab.";
+    } catch (err) {
+      loginStatus.textContent = "Failed to open sign-in. Is the service running?";
+      loginStatus.className = "login-status error";
+    }
+  });
+
+  signOutBtn.addEventListener("click", async () => {
+    await sendMsg("SIGN_OUT");
+    showLogin();
+  });
+
+  // Listen for auth state changes (from background script)
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.type === "AUTH_STATE_CHANGED" && msg.loggedIn) {
+      showApp();
+    }
+  });
 
   // ── Service Health ────────────────────────────────────
 
@@ -399,13 +455,15 @@
   // ── Init ──────────────────────────────────────────────
 
   async function init() {
-    checkHealth();
-    loadAlerts();
-    loadMonitors();
-    checkPendingElement();
+    // Check auth state first
+    await checkAuthState();
 
-    // Refresh health periodically
-    setInterval(checkHealth, 10000);
+    // Refresh health periodically (only runs if app is visible)
+    setInterval(() => {
+      if (appContainer.style.display !== "none") {
+        checkHealth();
+      }
+    }, 10000);
   }
 
   init();
