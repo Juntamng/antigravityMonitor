@@ -10,6 +10,11 @@
  * browser-assisted extension fallback.
  */
 
+if (!process.env.PLAYWRIGHT_BROWSERS_PATH) {
+  // Keep browser install/lookup inside project directory on Render.
+  process.env.PLAYWRIGHT_BROWSERS_PATH = "0";
+}
+
 const { chromium } = require("playwright");
 
 let sharedBrowser = null;

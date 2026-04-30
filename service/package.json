@@ -4,7 +4,7 @@
   "description": "Local service for Page Change Monitor — persistence, scheduling, and change detection",
   "main": "index.js",
   "scripts": {
-    "postinstall": "playwright install chromium",
+    "postinstall": "node -e \"const { execSync } = require('node:child_process'); execSync('npx playwright install chromium', { stdio: 'inherit', env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: '0' } });\"",
     "start": "node index.js",
     "dev": "node --watch index.js"
   },
