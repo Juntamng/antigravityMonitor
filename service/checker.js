@@ -37,9 +37,8 @@ async function getBrowser() {
   try {
     if (!sharedBrowser || !sharedBrowser.isConnected()) {
       sharedBrowser = await chromium.launch({
-        channel: "chrome",
         headless: true,
-        args: ["--disable-blink-features=AutomationControlled"],
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
       });
     }
     return { browser: sharedBrowser, owned: true };
@@ -51,7 +50,7 @@ async function getBrowser() {
   if (!sharedBrowser || !sharedBrowser.isConnected()) {
     sharedBrowser = await chromium.launch({
       headless: true,
-      args: ["--disable-blink-features=AutomationControlled"],
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
   }
   return { browser: sharedBrowser, owned: true };
@@ -94,7 +93,11 @@ async function checkSelector(monitor) {
 
     // Extract value
     const value = await el.evaluate((node) => {
-      if (node.tagName === "INPUT" || node.tagName === "TEXTAREA" || node.tagName === "SELECT") {
+      if (
+        node.tagName === "INPUT" ||
+        node.tagName === "TEXTAREA" ||
+        node.tagName === "SELECT"
+      ) {
         return node.value;
       }
       if (node.hasAttribute("content")) {
