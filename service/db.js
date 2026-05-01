@@ -10,6 +10,7 @@ const { createClient } = require("@supabase/supabase-js");
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
   console.error(
@@ -20,7 +21,13 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
   process.exit(1);
 }
 
+// Admin client — service_role key, bypasses RLS, used for all DB operations
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+  auth: { persistSession: false },
+});
+
+// Auth client — anon key, used only for validating user JWTs via getUser()
+const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: false },
 });
 
@@ -243,7 +250,7 @@ async function ackAlert(id) {
 // ── Auth helper ──────────────────────────────────────────
 
 async function getUserFromToken(token) {
-  const { data, error } = await supabase.auth.getUser(token);
+  const { data, error } = await supabaseAuth.auth.getUser(token);
   if (error || !data?.user) throw new Error("Invalid or expired token");
   return data.user;
 }
