@@ -32,9 +32,8 @@
     "identity"
   ],
   "host_permissions": [
-    "<all_urls>",
+    "https://antigravitymonitor.onrender.com/*",
     "http://127.0.0.1:3579/*",
-    "https://page-monitor-backend.onrender.com/*",
     "https://avvadnrovreimjfqbqdl.supabase.co/*"
   ],
   "commands": {

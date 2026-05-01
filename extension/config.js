@@ -5,7 +5,8 @@
  * SUPABASE_ANON_KEY is safe to ship in an unpacked extension; restrict URL allowlists in Supabase.
  */
 self.PAGE_MONITOR_CONFIG = {
-  BACKEND_URL: "https://page-monitor-backend.onrender.com",
+  BACKEND_URL: "https://antigravitymonitor.onrender.com",
   SUPABASE_URL: "https://avvadnrovreimjfqbqdl.supabase.co",
-  SUPABASE_ANON_KEY: "REPLACE_WITH_SUPABASE_ANON_KEY",
+  SUPABASE_ANON_KEY:
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF2dmFkbnJvdnJlaW1qZnFicWRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MTA2MzgsImV4cCI6MjA5MzA4NjYzOH0.tjw01UXMVd1G_-v2rGJlfsYXiTH5xF3Ks06ImJMU_Yc",
 };
