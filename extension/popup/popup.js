@@ -93,8 +93,6 @@
   function showApp() {
     loginScreen.style.display = "none";
     appContainer.style.display = "";
-    // Initialize app
-    loadServiceEnv();
     checkHealth();
     loadAlerts();
     loadMonitors();
