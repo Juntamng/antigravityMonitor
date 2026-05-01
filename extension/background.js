@@ -12,8 +12,7 @@
  *       • agent-status : check local agent liveness (every 60s)
  */
 
-// ── Config ────────────────────────────────────────────────
-
+// ── Config ────────────────────────────────────────────────                      
 const CLOUD_API_URL = "https://antigravitymonitor.onrender.com";
 const AGENT_LOCAL_URL = "http://127.0.0.1:3580";        // local agent management server
 
@@ -37,22 +36,22 @@ async function isLoggedIn() {
 // ── Alarms Setup ──────────────────────────────────────────
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.alarms.create("poll-alerts",  { periodInMinutes: 0.5  });
-  chrome.alarms.create("ext-checks",   { periodInMinutes: 1    });
-  chrome.alarms.create("agent-status", { periodInMinutes: 1    });
+  chrome.alarms.create("poll-alerts", { periodInMinutes: 0.5 });
+  chrome.alarms.create("ext-checks", { periodInMinutes: 1 });
+  chrome.alarms.create("agent-status", { periodInMinutes: 1 });
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  chrome.alarms.create("poll-alerts",  { periodInMinutes: 0.5  });
-  chrome.alarms.create("ext-checks",   { periodInMinutes: 1    });
-  chrome.alarms.create("agent-status", { periodInMinutes: 1    });
+  chrome.alarms.create("poll-alerts", { periodInMinutes: 0.5 });
+  chrome.alarms.create("ext-checks", { periodInMinutes: 1 });
+  chrome.alarms.create("agent-status", { periodInMinutes: 1 });
 });
 
 // ── Alarm Handler ─────────────────────────────────────────
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name === "poll-alerts")  await handleAlertPolling();
-  if (alarm.name === "ext-checks")   await handleExtensionChecks();
+  if (alarm.name === "poll-alerts") await handleAlertPolling();
+  if (alarm.name === "ext-checks") await handleExtensionChecks();
   if (alarm.name === "agent-status") await checkAgentStatus();
 });
 
@@ -121,7 +120,7 @@ async function executeExtensionCheck(monitor) {
       });
     } catch { /* cloud unreachable */ }
   } finally {
-    if (tabId) chrome.tabs.remove(tabId).catch(() => {});
+    if (tabId) chrome.tabs.remove(tabId).catch(() => { });
   }
 }
 
@@ -186,7 +185,7 @@ async function handleAlertPolling() {
                   oldValue: alert.old_value,
                   newValue: alert.new_value,
                 },
-              }).catch(() => {});
+              }).catch(() => { });
             }
           }
         }
@@ -226,9 +225,9 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
         if (tokenData.access_token) {
           await chrome.storage.local.set({ authSession: tokenData });
           console.log("[bg] Auth tokens stored successfully");
-          chrome.tabs.remove(tabId).catch(() => {});
+          chrome.tabs.remove(tabId).catch(() => { });
           chrome.action.setBadgeText({ text: "" });
-          chrome.runtime.sendMessage({ type: "AUTH_STATE_CHANGED", loggedIn: true }).catch(() => {});
+          chrome.runtime.sendMessage({ type: "AUTH_STATE_CHANGED", loggedIn: true }).catch(() => { });
         }
       }
     } catch (err) {
