@@ -4,7 +4,6 @@
   "description": "Cloud API for Page Change Monitor — auth, CRUD, job queue, alerts (no Playwright)",
   "main": "index.js",
   "scripts": {
-    "postinstall": "npx playwright install --with-deps chromium",
     "start": "node index.js",
     "dev": "node --watch index.js"
   },
