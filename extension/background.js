@@ -13,7 +13,8 @@
  */
 
 // ── Config ────────────────────────────────────────────────                      
-const CLOUD_API_URL = "https://antigravitymonitor.onrender.com";
+// const CLOUD_API_URL = "https://antigravitymonitor.onrender.com";
+const CLOUD_API_URL = "http://localhost:3579";
 const AGENT_LOCAL_URL = "http://127.0.0.1:3580";        // local agent management server
 
 // ── Auth Token Management ─────────────────────────────────
