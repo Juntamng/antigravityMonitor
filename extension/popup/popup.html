@@ -7,95 +7,135 @@
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <!-- ── Header ──────────────────────────────────────── -->
-    <div class="header">
-      <div class="header-left">
-        <div class="header-logo">👁</div>
-        <h1>Page Monitor</h1>
-      </div>
-      <div class="header-actions">
-        <div class="status-dot" id="status-dot" title="Service status"></div>
-      </div>
-    </div>
-
-    <!-- ── Alerts Banner ───────────────────────────────── -->
-    <div class="alerts-banner" id="alerts-banner">
-      <div class="alerts-header">
-        <span>🔔 Unread Changes</span>
-        <button class="btn btn-ghost btn-sm" id="dismiss-all-btn">Clear All</button>
-      </div>
-      <div id="alerts-list"></div>
-    </div>
-
-    <!-- ── Confirm Selection ───────────────────────────── -->
-    <div class="confirm-section" id="confirm-section">
-      <div class="section-title">New Monitor</div>
-      <div class="confirm-preview" id="confirm-preview"></div>
-      <div class="form-group">
-        <label class="form-label" for="monitor-label">Label</label>
-        <input
-          type="text"
-          class="form-input"
-          id="monitor-label"
-          placeholder="e.g. Product Price"
-          maxlength="100"
-        />
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label" for="monitor-interval">Check every (min)</label>
-          <input
-            type="number"
-            class="form-input"
-            id="monitor-interval"
-            value="5"
-            min="1"
-            max="1440"
-          />
+    <!-- ── Auth (logged out) ───────────────────────────── -->
+    <div class="auth-section" id="auth-section">
+      <div class="header">
+        <div class="header-left">
+          <div class="header-logo">👁</div>
+          <h1>Page Monitor</h1>
         </div>
       </div>
-      <div class="confirm-actions">
-        <button class="btn btn-ghost" id="cancel-confirm-btn">Cancel</button>
-        <button class="btn btn-primary" id="save-monitor-btn">
-          Start Monitoring
+      <div class="section" style="padding-top: 8px">
+        <div class="section-title">Sign in</div>
+        <p class="auth-hint">
+          Configure <code>extension/config.js</code> with your deployed
+          <code>BACKEND_URL</code> and Supabase <code>SUPABASE_ANON_KEY</code>.
+        </p>
+        <div class="form-group">
+          <label class="form-label" for="auth-email">Email</label>
+          <input type="email" class="form-input" id="auth-email" autocomplete="username" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="auth-password">Password</label>
+          <input
+            type="password"
+            class="form-input"
+            id="auth-password"
+            autocomplete="current-password"
+          />
+        </div>
+        <div id="auth-error" class="auth-error hidden"></div>
+        <button class="btn btn-primary" id="auth-login-btn" style="width: 100%; margin-top: 8px">
+          Sign in
+        </button>
+        <button class="btn btn-ghost" id="auth-google-btn" style="width: 100%; margin-top: 8px">
+          Continue with Google
         </button>
       </div>
     </div>
 
-    <!-- ── Picker Action ───────────────────────────────── -->
-    <div class="picker-bar" id="picker-bar">
-      <button class="btn btn-primary" id="pick-element-btn">
-        🎯 Pick Element
-      </button>
-      <span class="picker-hint">or press <kbd style="font-family:monospace;background:#1c1c30;padding:1px 5px;border-radius:3px;font-size:11px;border:1px solid rgba(99,102,241,0.2)">Alt+Shift+P</kbd></span>
-    </div>
+    <!-- ── Main app (logged in) ─────────────────────────── -->
+    <div class="app-main hidden" id="app-main">
+      <div class="header">
+        <div class="header-left">
+          <div class="header-logo">👁</div>
+          <h1>Page Monitor</h1>
+        </div>
+        <div class="header-actions">
+          <span class="user-email" id="user-email" title=""></span>
+          <div class="status-dot" id="status-dot" title="Backend status"></div>
+          <button class="btn btn-ghost btn-sm" id="logout-btn" type="button" title="Sign out">
+            Log out
+          </button>
+        </div>
+      </div>
 
-    <!-- ── Monitor List ────────────────────────────────── -->
-    <div class="section" id="monitors-section">
-      <div class="section-title">Monitors</div>
-      <div id="monitor-list">
-        <div class="empty-state" id="empty-state">
-          <div class="empty-icon">📡</div>
-          <div class="empty-title">No monitors yet</div>
-          <div class="empty-desc">
-            Pick an element on any page to start<br />
-            monitoring it for changes.
+      <div class="alerts-banner" id="alerts-banner">
+        <div class="alerts-header">
+          <span>🔔 Unread Changes</span>
+          <button class="btn btn-ghost btn-sm" id="dismiss-all-btn">Clear All</button>
+        </div>
+        <div id="alerts-list"></div>
+      </div>
+
+      <div class="confirm-section" id="confirm-section">
+        <div class="section-title">New Monitor</div>
+        <div class="confirm-preview" id="confirm-preview"></div>
+        <div class="form-group">
+          <label class="form-label" for="monitor-label">Label</label>
+          <input
+            type="text"
+            class="form-input"
+            id="monitor-label"
+            placeholder="e.g. Product Price"
+            maxlength="100"
+          />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="monitor-interval">Check every (min)</label>
+            <input
+              type="number"
+              class="form-input"
+              id="monitor-interval"
+              value="5"
+              min="1"
+              max="1440"
+            />
           </div>
+        </div>
+        <div class="confirm-actions">
+          <button class="btn btn-ghost" id="cancel-confirm-btn">Cancel</button>
+          <button class="btn btn-primary" id="save-monitor-btn">Start Monitoring</button>
+        </div>
+      </div>
+
+      <div class="picker-bar" id="picker-bar">
+        <button class="btn btn-primary" id="pick-element-btn">🎯 Pick Element</button>
+        <span class="picker-hint"
+          >or press
+          <kbd
+            style="font-family:monospace;background:#1c1c30;padding:1px 5px;border-radius:3px;font-size:11px;border:1px solid rgba(99,102,241,0.2)"
+            >Alt+Shift+P</kbd
+          ></span
+        >
+      </div>
+
+      <div class="section" id="monitors-section">
+        <div class="section-title">Monitors</div>
+        <div id="monitor-list">
+          <div class="empty-state" id="empty-state">
+            <div class="empty-icon">📡</div>
+            <div class="empty-title">No monitors yet</div>
+            <div class="empty-desc">
+              Pick an element on any page to start<br />
+              monitoring it for changes.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="history-section" id="history-section">
+        <div class="history-back" id="history-back">← Back to monitors</div>
+        <div class="section" style="padding-top: 8px">
+          <div class="section-title" id="history-title">History</div>
+          <div id="history-list"></div>
         </div>
       </div>
     </div>
 
-    <!-- ── History View ────────────────────────────────── -->
-    <div class="history-section" id="history-section">
-      <div class="history-back" id="history-back">
-        ← Back to monitors
-      </div>
-      <div class="section" style="padding-top:8px">
-        <div class="section-title" id="history-title">History</div>
-        <div id="history-list"></div>
-      </div>
-    </div>
-
+    <script src="../config.js"></script>
+    <script src="auth.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

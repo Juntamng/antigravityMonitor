@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Page Change Monitor",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Monitor any element on any webpage for content changes and get instant alerts.",
   "icons": {
     "16": "icons/icon16.png",
@@ -28,11 +28,14 @@
     "notifications",
     "alarms",
     "scripting",
-    "activeTab"
+    "activeTab",
+    "identity"
   ],
   "host_permissions": [
     "<all_urls>",
-    "http://localhost:3579/*"
+    "http://127.0.0.1:3579/*",
+    "https://page-monitor-backend.onrender.com/*",
+    "https://avvadnrovreimjfqbqdl.supabase.co/*"
   ],
   "commands": {
     "activate-picker": {

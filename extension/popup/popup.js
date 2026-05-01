@@ -1,13 +1,8 @@
 /**
- * popup.js — Popup application logic
- *
- * Manages monitor list, confirm-selection form, history view,
- * alerts banner, and service health indicator.
+ * popup.js — Popup application logic (auth-gated)
  */
 
 (() => {
-  // ── DOM refs ──────────────────────────────────────────
-
   const statusDot = document.getElementById("status-dot");
   const alertsBanner = document.getElementById("alerts-banner");
   const alertsList = document.getElementById("alerts-list");
@@ -28,13 +23,9 @@
   const historyTitle = document.getElementById("history-title");
   const historyList = document.getElementById("history-list");
 
-  // ── State ─────────────────────────────────────────────
-
   let pendingElement = null;
   let monitors = [];
-  let currentView = "list"; // list | confirm | history
-
-  // ── Helpers ───────────────────────────────────────────
+  let currentView = "list";
 
   function esc(str) {
     const div = document.createElement("div");
@@ -50,7 +41,10 @@
   function relativeTime(dateStr) {
     if (!dateStr) return "never";
     const now = Date.now();
-    const then = new Date(dateStr + "Z").getTime(); // SQLite stores UTC
+    const s = String(dateStr);
+    const iso = s.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(s) ? s : `${s}Z`;
+    const then = new Date(iso).getTime();
+    if (Number.isNaN(then)) return "unknown";
     const diff = Math.floor((now - then) / 1000);
     if (diff < 10) return "just now";
     if (diff < 60) return `${diff}s ago`;
@@ -67,20 +61,17 @@
     });
   }
 
-  // ── Service Health ────────────────────────────────────
-
   async function checkHealth() {
+    if (!statusDot) return;
     try {
       const resp = await sendMsg("GET_HEALTH");
       statusDot.className = resp?.ok ? "status-dot online" : "status-dot offline";
-      statusDot.title = resp?.ok ? "Service online" : "Service offline";
+      statusDot.title = resp?.ok ? "Backend online" : "Backend offline";
     } catch {
       statusDot.className = "status-dot offline";
-      statusDot.title = "Service offline";
+      statusDot.title = "Backend offline";
     }
   }
-
-  // ── Alerts ────────────────────────────────────────────
 
   async function loadAlerts() {
     try {
@@ -95,7 +86,7 @@
         .slice(0, 5)
         .map(
           (a) => `
-        <div class="alert-row" data-id="${a.id}">
+        <div class="alert-row" data-id="${esc(String(a.id))}">
           <div class="alert-indicator"></div>
           <div class="alert-content">
             <div class="alert-label">${esc(a.monitor_label)}</div>
@@ -111,11 +102,10 @@
         )
         .join("");
 
-      // Dismiss individual alerts
       alertsList.querySelectorAll(".dismiss-alert-btn").forEach((btn) => {
         btn.addEventListener("click", async (e) => {
           const row = e.target.closest(".alert-row");
-          const id = Number(row.dataset.id);
+          const id = row.dataset.id;
           await sendMsg("DISMISS_ALERT", { id });
           row.style.transition = "opacity 0.2s, max-height 0.2s";
           row.style.opacity = "0";
@@ -132,13 +122,11 @@
     }
   }
 
-  dismissAllBtn.addEventListener("click", async () => {
+  dismissAllBtn?.addEventListener("click", async () => {
     await sendMsg("DISMISS_ALL_ALERTS");
     alertsBanner.classList.remove("has-alerts");
     alertsList.innerHTML = "";
   });
-
-  // ── Pending Element ───────────────────────────────────
 
   async function checkPendingElement() {
     const el = await sendMsg("GET_PENDING_ELEMENT");
@@ -171,10 +159,7 @@
       </div>
     `;
 
-    // Auto-generate label from page title
-    monitorLabelInput.value = e.pageTitle
-      ? e.pageTitle.slice(0, 40)
-      : "My Monitor";
+    monitorLabelInput.value = e.pageTitle ? e.pageTitle.slice(0, 40) : "My Monitor";
     monitorLabelInput.focus();
     monitorLabelInput.select();
   }
@@ -207,13 +192,14 @@
     saveMonitorBtn.innerHTML = '<span class="spinner"></span> Saving…';
 
     try {
-      await sendMsg("CREATE_MONITOR", {
+      const res = await sendMsg("CREATE_MONITOR", {
         label,
         url: pendingElement.url,
         selector: pendingElement.selector,
         interval_minutes: interval || 5,
         last_value: pendingElement.value,
       });
+      if (res?.error) throw new Error(res.error);
 
       await sendMsg("CLEAR_PENDING_ELEMENT");
       showListView();
@@ -226,18 +212,16 @@
     }
   });
 
-  // ── Pick Element ──────────────────────────────────────
-
   pickElementBtn.addEventListener("click", async () => {
     await sendMsg("ACTIVATE_PICKER");
-    window.close(); // close popup so user can interact with page
+    window.close();
   });
-
-  // ── Monitor List ──────────────────────────────────────
 
   async function loadMonitors() {
     try {
-      monitors = await sendMsg("GET_MONITORS");
+      const data = await sendMsg("GET_MONITORS");
+      if (data?.error) throw new Error(data.error);
+      monitors = Array.isArray(data) ? data : [];
       renderMonitors();
     } catch {
       monitors = [];
@@ -248,19 +232,16 @@
   function renderMonitors() {
     if (!monitors || monitors.length === 0) {
       emptyState.classList.remove("hidden");
-      // Clear any existing cards but keep empty state
-      const cards = monitorList.querySelectorAll(".monitor-card");
-      cards.forEach((c) => c.remove());
+      monitorList.querySelectorAll(".monitor-card").forEach((c) => c.remove());
       return;
     }
 
     emptyState.classList.add("hidden");
 
-    // Build cards
     const html = monitors
       .map(
         (m) => `
-      <div class="monitor-card" data-id="${m.id}">
+      <div class="monitor-card" data-id="${esc(String(m.id))}">
         <div class="monitor-top">
           <div class="monitor-icon">📡</div>
           <div class="monitor-info">
@@ -273,21 +254,18 @@
           <span class="monitor-time">${relativeTime(m.last_checked)}</span>
         </div>
         <div class="monitor-actions">
-          <button class="btn btn-ghost btn-sm check-now-btn" data-id="${m.id}">⚡ Check Now</button>
-          <button class="btn btn-ghost btn-sm history-btn" data-id="${m.id}">📜 History</button>
-          <button class="btn btn-danger btn-sm delete-btn" data-id="${m.id}">🗑</button>
+          <button class="btn btn-ghost btn-sm check-now-btn" data-id="${esc(String(m.id))}">⚡ Check Now</button>
+          <button class="btn btn-ghost btn-sm history-btn" data-id="${esc(String(m.id))}">📜 History</button>
+          <button class="btn btn-danger btn-sm delete-btn" data-id="${esc(String(m.id))}">🗑</button>
         </div>
       </div>
     `
       )
       .join("");
 
-    // Remove old cards, keep empty state
-    const oldCards = monitorList.querySelectorAll(".monitor-card");
-    oldCards.forEach((c) => c.remove());
+    monitorList.querySelectorAll(".monitor-card").forEach((c) => c.remove());
     monitorList.insertAdjacentHTML("beforeend", html);
 
-    // Bind actions
     monitorList.querySelectorAll(".check-now-btn").forEach((btn) => {
       btn.addEventListener("click", handleCheckNow);
     });
@@ -301,7 +279,7 @@
 
   async function handleCheckNow(e) {
     const btn = e.currentTarget;
-    const id = Number(btn.dataset.id);
+    const id = btn.dataset.id;
     const originalText = btn.innerHTML;
 
     btn.disabled = true;
@@ -316,12 +294,14 @@
       } else if (result?.changed) {
         btn.innerHTML = "✅ Changed!";
         btn.style.color = "var(--success)";
+      } else if (result?.queued) {
+        btn.innerHTML = "⏳ Queued";
+        btn.style.color = "var(--accent-light)";
       } else {
-        btn.innerHTML = "✅ Same";
+        btn.innerHTML = "✅ OK";
         btn.style.color = "var(--success)";
       }
 
-      // Reload monitor list to show new value
       setTimeout(() => loadMonitors(), 1200);
     } catch {
       btn.innerHTML = "❌ Failed";
@@ -336,8 +316,8 @@
   }
 
   async function handleShowHistory(e) {
-    const id = Number(e.currentTarget.dataset.id);
-    const monitor = monitors.find((m) => m.id === id);
+    const id = e.currentTarget.dataset.id;
+    const monitor = monitors.find((m) => String(m.id) === String(id));
 
     currentView = "history";
     monitorsSection.classList.add("hidden");
@@ -346,13 +326,16 @@
     historySection.classList.add("active");
 
     historyTitle.textContent = `History — ${monitor?.label || "Monitor"}`;
-    historyList.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted)"><span class="spinner"></span> Loading…</div>';
+    historyList.innerHTML =
+      '<div style="padding:20px;text-align:center;color:var(--text-muted)"><span class="spinner"></span> Loading…</div>';
 
     try {
       const history = await sendMsg("GET_HISTORY", { id });
 
+      if (history?.error) throw new Error(history.error);
       if (!history || history.length === 0) {
-        historyList.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted)">No history yet</div>';
+        historyList.innerHTML =
+          '<div style="padding:20px;text-align:center;color:var(--text-muted)">No history yet</div>';
         return;
       }
 
@@ -374,12 +357,13 @@
         )
         .join("");
     } catch {
-      historyList.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted)">Failed to load history</div>';
+      historyList.innerHTML =
+        '<div style="padding:20px;text-align:center;color:var(--text-muted)">Failed to load history</div>';
     }
   }
 
   async function handleDelete(e) {
-    const id = Number(e.currentTarget.dataset.id);
+    const id = e.currentTarget.dataset.id;
     const card = e.currentTarget.closest(".monitor-card");
 
     card.style.transition = "opacity 0.2s, transform 0.2s";
@@ -396,16 +380,26 @@
     showListView();
   });
 
-  // ── Init ──────────────────────────────────────────────
-
-  async function init() {
+  async function startMainApp() {
     checkHealth();
     loadAlerts();
     loadMonitors();
     checkPendingElement();
-
-    // Refresh health periodically
     setInterval(checkHealth, 10000);
+  }
+
+  async function init() {
+    window.PageMonitorAuth.bindAuthForm();
+    const ok = await window.PageMonitorAuth.init();
+    if (ok) {
+      await startMainApp();
+    }
+    window.addEventListener("page-monitor:auth-changed", async () => {
+      const authed = await window.PageMonitorAuth.init();
+      if (authed) {
+        await startMainApp();
+      }
+    });
   }
 
   init();
