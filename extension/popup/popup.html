@@ -83,6 +83,28 @@
             />
           </div>
         </div>
+        <!-- Check method picker -->
+        <div class="form-group">
+          <label class="form-label">Check Method</label>
+          <div class="mode-toggle">
+            <label class="mode-option" id="mode-agent-label">
+              <input type="radio" name="execution-mode" id="mode-agent" value="agent" checked />
+              <span class="mode-icon">🤖</span>
+              <span class="mode-text">
+                <strong>Agent</strong>
+                <small>Public pages</small>
+              </span>
+            </label>
+            <label class="mode-option" id="mode-extension-label">
+              <input type="radio" name="execution-mode" id="mode-extension" value="extension" />
+              <span class="mode-icon">🔐</span>
+              <span class="mode-text">
+                <strong>My Browser</strong>
+                <small>Login-required</small>
+              </span>
+            </label>
+          </div>
+        </div>
         <div class="confirm-actions">
           <button class="btn btn-ghost" id="cancel-confirm-btn">Cancel</button>
           <button class="btn btn-primary" id="save-monitor-btn">

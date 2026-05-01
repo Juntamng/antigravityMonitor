@@ -1,0 +1,16 @@
+{
+  "name": "page-monitor-agent",
+  "version": "1.0.0",
+  "description": "Local browser agent — runs Playwright checks for Page Change Monitor",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^4.21.2",
+    "node-cron": "^3.0.3",
+    "playwright": "^1.52.0"
+  }
+}

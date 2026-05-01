@@ -35,6 +35,7 @@
   const historyTitle = document.getElementById("history-title");
   const historyList = document.getElementById("history-list");
 
+
   // ── State ─────────────────────────────────────────────
 
   let pendingElement = null;
@@ -99,6 +100,7 @@
     loadAlerts();
     loadMonitors();
     checkPendingElement();
+    checkAgentStatus();
   }
 
   googleSignInBtn.addEventListener("click", async () => {
@@ -125,41 +127,27 @@
     }
   });
 
-  // ── Service Health ────────────────────────────────────
+  // ── Service Health + Agent Status ─────────────────────
 
   async function checkHealth() {
     try {
       const svc = await sendMsg("GET_SERVICE_ENV");
       const resp = await sendMsg("GET_HEALTH");
       statusDot.className = resp?.ok ? "status-dot online" : "status-dot offline";
-      statusDot.title = resp?.ok ? `Service online (${svc?.env || "local"})` : `Service offline (${svc?.env || "local"})`;
+      statusDot.title = resp?.ok ? "Cloud API online" : "Cloud API offline";
     } catch {
       statusDot.className = "status-dot offline";
-      statusDot.title = "Service offline";
+      statusDot.title = "Cloud API offline";
     }
   }
 
-  async function loadServiceEnv() {
-    try {
-      const svc = await sendMsg("GET_SERVICE_ENV");
-      const env = svc?.env || "local";
-      serviceEnvSelect.value = env;
-      serviceEnvSelect.title = `Backend: ${env}`;
-    } catch {
-      serviceEnvSelect.value = "local";
-    }
+  async function checkAgentStatus() {
+    const result = await sendMsg("GET_AGENT_STATUS");
+    statusDot.title =
+      (statusDot.title || "") +
+      ` | Agent: ${result?.status === "online" ? "🟢 online" : "🔴 offline"}`;
   }
 
-  serviceEnvSelect.addEventListener("change", async () => {
-    const env = serviceEnvSelect.value;
-    serviceEnvSelect.disabled = true;
-    try {
-      await sendMsg("SET_SERVICE_ENV", { env });
-      await Promise.all([checkHealth(), loadMonitors(), loadAlerts()]);
-    } finally {
-      serviceEnvSelect.disabled = false;
-    }
-  });
 
   // ── Alerts ────────────────────────────────────────────
 
@@ -277,6 +265,7 @@
   saveMonitorBtn.addEventListener("click", async () => {
     const label = monitorLabelInput.value.trim();
     const interval = parseInt(monitorIntervalInput.value, 10);
+    const executionMode = document.querySelector('input[name="execution-mode"]:checked')?.value || "agent";
 
     if (!label) {
       monitorLabelInput.style.borderColor = "var(--danger)";
@@ -294,6 +283,7 @@
         selector: pendingElement.selector,
         interval_minutes: interval || 5,
         last_value: pendingElement.value,
+        execution_mode: executionMode,
       });
 
       await sendMsg("CLEAR_PENDING_ELEMENT");
@@ -343,7 +333,7 @@
         (m) => `
       <div class="monitor-card" data-id="${m.id}">
         <div class="monitor-top">
-          <div class="monitor-icon">📡</div>
+          <div class="monitor-icon">${m.execution_mode === "extension" ? "🔐" : "🤖"}</div>
           <div class="monitor-info">
             <div class="monitor-label">${esc(m.label)}</div>
             <div class="monitor-url">${esc(truncate(m.url, 45))}</div>
@@ -354,7 +344,6 @@
           <span class="monitor-time">${relativeTime(m.last_checked)}</span>
         </div>
         <div class="monitor-actions">
-          <button class="btn btn-ghost btn-sm check-now-btn" data-id="${m.id}">⚡ Check Now</button>
           <button class="btn btn-ghost btn-sm history-btn" data-id="${m.id}">📜 History</button>
           <button class="btn btn-danger btn-sm delete-btn" data-id="${m.id}">🗑</button>
         </div>
@@ -369,9 +358,6 @@
     monitorList.insertAdjacentHTML("beforeend", html);
 
     // Bind actions
-    monitorList.querySelectorAll(".check-now-btn").forEach((btn) => {
-      btn.addEventListener("click", handleCheckNow);
-    });
     monitorList.querySelectorAll(".history-btn").forEach((btn) => {
       btn.addEventListener("click", handleShowHistory);
     });

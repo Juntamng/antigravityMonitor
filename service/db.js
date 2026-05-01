@@ -1,11 +1,8 @@
 /**
- * db.js — Supabase persistence layer
+ * db.js — Supabase persistence layer (Cloud API)
  *
- * Replaces node:sqlite with @supabase/supabase-js.
- * Uses the service_role key so the backend can access all rows
- * regardless of RLS policies (trusted server context).
- *
- * All functions are async and return data directly or throw on error.
+ * Uses service_role key — trusted server context, bypasses RLS.
+ * All functions async, throw on error.
  */
 
 require("dotenv").config();
@@ -32,22 +29,17 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
 async function getAllMonitors(userId) {
   const { data, error } = await supabase
     .from("monitors")
-    .select(`
-      *,
-      last_checked:history(checked_at)
-    `)
+    .select(`*, last_checked:history(checked_at)`)
     .eq("user_id", userId)
     .eq("active", true)
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(error.message);
 
-  // Flatten last_checked to a single timestamp
   return data.map((m) => {
     const checks = m.last_checked || [];
-    const latest = checks.reduce((max, h) => {
-      return !max || h.checked_at > max ? h.checked_at : max;
-    }, null);
+    const latest = checks.reduce((max, h) =>
+      !max || h.checked_at > max ? h.checked_at : max, null);
     return { ...m, last_checked: latest };
   });
 }
@@ -58,12 +50,14 @@ async function getMonitor(id) {
     .select("*")
     .eq("id", id)
     .single();
-
   if (error) throw new Error(error.message);
   return data;
 }
 
-async function createMonitor({ userId, label, url, selector, interval_minutes = 5, last_value = null }) {
+async function createMonitor({
+  userId, label, url, selector,
+  interval_minutes = 5, last_value = null, execution_mode = "agent",
+}) {
   const { data, error } = await supabase
     .from("monitors")
     .insert({
@@ -73,10 +67,12 @@ async function createMonitor({ userId, label, url, selector, interval_minutes = 
       selector,
       interval_minutes,
       last_value,
+      execution_mode,
+      next_check_at: new Date().toISOString(),
+      assigned_agent: "default",
     })
     .select()
     .single();
-
   if (error) throw new Error(error.message);
   return data;
 }
@@ -86,7 +82,6 @@ async function deleteMonitor(id) {
     .from("monitors")
     .update({ active: false })
     .eq("id", id);
-
   if (error) throw new Error(error.message);
 }
 
@@ -95,37 +90,100 @@ async function updateMonitorValue(id, value) {
     .from("monitors")
     .update({ last_value: value })
     .eq("id", id);
-
   if (error) throw new Error(error.message);
 }
 
-async function flagBrowserCheck(id) {
-  const { error } = await supabase
-    .from("monitors")
-    .update({ pending_browser_check: true })
-    .eq("id", id);
+// ── Agent Job Queue ──────────────────────────────────────
 
-  if (error) throw new Error(error.message);
-}
-
-async function clearBrowserCheck(id) {
-  const { error } = await supabase
-    .from("monitors")
-    .update({ pending_browser_check: false })
-    .eq("id", id);
-
-  if (error) throw new Error(error.message);
-}
-
-async function getPendingBrowserChecks() {
+/**
+ * Returns monitors that the given agent should check right now.
+ * Criteria: active, execution_mode='agent', assigned to this agent,
+ * and next_check_at is in the past.
+ */
+async function getAgentJobs(agentId = "default") {
   const { data, error } = await supabase
     .from("monitors")
-    .select("id, label, url, selector")
+    .select("id, label, url, selector, interval_minutes")
     .eq("active", true)
-    .eq("pending_browser_check", true);
+    .eq("execution_mode", "agent")
+    .eq("assigned_agent", agentId)
+    .lte("next_check_at", new Date().toISOString());
 
   if (error) throw new Error(error.message);
   return data;
+}
+
+/**
+ * Returns monitors due for the extension to check (user-scoped, login-gated pages).
+ */
+async function getExtensionJobs(userId) {
+  const { data, error } = await supabase
+    .from("monitors")
+    .select("id, label, url, selector, interval_minutes")
+    .eq("active", true)
+    .eq("user_id", userId)
+    .eq("execution_mode", "extension")
+    .lte("next_check_at", new Date().toISOString());
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+/**
+ * Unified result handler for both agent and extension check results.
+ * - Inserts history
+ * - Detects change, inserts alert if changed
+ * - Updates last_value and schedules next_check_at
+ */
+async function processCheckResult(monitorId, value, errorMsg) {
+  const monitor = await getMonitor(monitorId);
+  if (!monitor) throw new Error("Monitor not found");
+
+  // Write history
+  await insertHistory(monitorId, value ?? null, errorMsg ?? null);
+
+  if (errorMsg) {
+    // On error, retry again on the next normal interval
+    await _scheduleNext(monitorId, monitor.interval_minutes);
+    return { changed: false, error: errorMsg };
+  }
+
+  // Detect change
+  const oldValue = monitor.last_value;
+  const changed = oldValue !== null && oldValue !== value;
+
+  if (changed) {
+    console.log(`[db] Change detected on monitor ${monitorId}: "${oldValue}" → "${value}"`);
+    await insertAlert(monitorId, oldValue, value);
+  }
+
+  // Update last_value and schedule next run
+  await supabase
+    .from("monitors")
+    .update({
+      last_value: value,
+      next_check_at: _nextCheckAt(monitor.interval_minutes),
+    })
+    .eq("id", monitorId);
+
+  return { changed, old_value: oldValue, new_value: value };
+}
+
+// ── Agent Registry ───────────────────────────────────────
+
+async function upsertAgentHeartbeat({ agent_id, status, monitor_count }) {
+  const { error } = await supabase
+    .from("agent_registry")
+    .upsert(
+      {
+        agent_id,
+        status: status || "online",
+        monitor_count: monitor_count || 0,
+        last_seen: new Date().toISOString(),
+      },
+      { onConflict: "agent_id" }
+    );
+  if (error) throw new Error(error.message);
 }
 
 // ── History ──────────────────────────────────────────────
@@ -134,7 +192,6 @@ async function insertHistory(monitorId, value, errorMsg) {
   const { error } = await supabase
     .from("history")
     .insert({ monitor_id: monitorId, value, error: errorMsg });
-
   if (error) throw new Error(error.message);
 }
 
@@ -145,7 +202,6 @@ async function getHistory(monitorId) {
     .eq("monitor_id", monitorId)
     .order("checked_at", { ascending: false })
     .limit(100);
-
   if (error) throw new Error(error.message);
   return data;
 }
@@ -156,24 +212,19 @@ async function insertAlert(monitorId, oldValue, newValue) {
   const { error } = await supabase
     .from("alerts")
     .insert({ monitor_id: monitorId, old_value: oldValue, new_value: newValue });
-
   if (error) throw new Error(error.message);
 }
 
 async function getPendingAlerts(userId) {
   const { data, error } = await supabase
     .from("alerts")
-    .select(`
-      *,
-      monitors!inner(label, user_id)
-    `)
+    .select(`*, monitors!inner(label, user_id)`)
     .eq("acked", false)
     .eq("monitors.user_id", userId)
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(error.message);
 
-  // Flatten monitor_label for API compatibility
   return data.map((a) => ({
     ...a,
     monitor_label: a.monitors?.label,
@@ -186,19 +237,29 @@ async function ackAlert(id) {
     .from("alerts")
     .update({ acked: true })
     .eq("id", id);
-
   if (error) throw new Error(error.message);
 }
 
 // ── Auth helper ──────────────────────────────────────────
 
-/**
- * Verify a JWT and return the user object, or throw.
- */
 async function getUserFromToken(token) {
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data?.user) throw new Error("Invalid or expired token");
   return data.user;
+}
+
+// ── Internals ────────────────────────────────────────────
+
+function _nextCheckAt(intervalMinutes) {
+  const ms = (intervalMinutes || 5) * 60 * 1000;
+  return new Date(Date.now() + ms).toISOString();
+}
+
+async function _scheduleNext(monitorId, intervalMinutes) {
+  await supabase
+    .from("monitors")
+    .update({ next_check_at: _nextCheckAt(intervalMinutes) })
+    .eq("id", monitorId);
 }
 
 module.exports = {
@@ -209,9 +270,12 @@ module.exports = {
   createMonitor,
   deleteMonitor,
   updateMonitorValue,
-  flagBrowserCheck,
-  clearBrowserCheck,
-  getPendingBrowserChecks,
+  // Job queues
+  getAgentJobs,
+  getExtensionJobs,
+  processCheckResult,
+  // Agent registry
+  upsertAgentHeartbeat,
   // History
   insertHistory,
   getHistory,

@@ -770,3 +770,70 @@ body::-webkit-scrollbar-thumb {
   border-color: rgba(239, 68, 68, 0.3);
 }
 
+/* ── Execution Mode Toggle ───────────────────────────── */
+
+.mode-toggle {
+  display: flex;
+  gap: 6px;
+}
+
+.mode-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+  position: relative;
+}
+
+.mode-option input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.mode-option:has(input:checked) {
+  border-color: var(--accent);
+  background: rgba(99, 102, 241, 0.1);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.mode-option:hover:not(:has(input:checked)) {
+  border-color: var(--border-strong);
+  background: var(--bg-card-hover);
+}
+
+.mode-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.mode-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.mode-text strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.mode-text small {
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.mode-option:has(input:checked) .mode-text strong {
+  color: var(--accent-light);
+}
+

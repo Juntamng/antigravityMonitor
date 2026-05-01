@@ -1,7 +1,7 @@
 {
-  "name": "page-monitor-service",
-  "version": "1.0.0",
-  "description": "Local service for Page Change Monitor — persistence, scheduling, and change detection",
+  "name": "page-monitor-cloud-api",
+  "version": "2.0.0",
+  "description": "Cloud API for Page Change Monitor — auth, CRUD, job queue, alerts (no Playwright)",
   "main": "index.js",
   "scripts": {
     "postinstall": "npx playwright install --with-deps chromium",
@@ -12,8 +12,6 @@
     "@supabase/supabase-js": "^2.105.1",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
-    "express": "^4.21.2",
-    "node-cron": "^3.0.3",
-    "playwright": "^1.52.0"
+    "express": "^4.21.2"
   }
 }

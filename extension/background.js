@@ -2,43 +2,20 @@
  * background.js — Extension service worker
  *
  * Responsibilities:
- *   - Authentication: Google OAuth flow via Supabase, token management
- *   - Message bus bridging popup/content ↔ local service API
+ *   - Authentication: Google OAuth via Supabase, token management
+ *   - Message bus bridging popup/content ↔ cloud API
  *   - Pending picked element in session storage
- *   - Alarm-driven periodic jobs (browser checks, alert polling)
- *   - Browser-assisted fallback execution in hidden tabs
+ *   - Alarm-driven periodic jobs:
+ *       • poll-alerts  : fetch new alerts from cloud (every 30s)
+ *       • ext-checks   : execute "extension" mode monitor checks using
+ *                        the user's real Chrome session (every 60s)
+ *       • agent-status : check local agent liveness (every 60s)
  */
 
-const SERVICE_ENV_KEY = "serviceEnv";
-const SERVICE_ENV_DEFAULT = "local";
-const SERVICE_URLS = {
-  local: "http://localhost:3579",
-  render: "https://antigravitymonitor.onrender.com",
-};
+// ── Config ────────────────────────────────────────────────
 
-async function getServiceEnv() {
-  const { [SERVICE_ENV_KEY]: env } =
-    await chrome.storage.local.get(SERVICE_ENV_KEY);
-  return SERVICE_URLS[env] ? env : SERVICE_ENV_DEFAULT;
-}
-
-async function setServiceEnv(env) {
-  if (!SERVICE_URLS[env]) {
-    throw new Error("Invalid service environment");
-  }
-  await chrome.storage.local.set({ [SERVICE_ENV_KEY]: env });
-  return env;
-}
-
-async function getServiceUrl() {
-  const env = await getServiceEnv();
-  return SERVICE_URLS[env];
-}
-
-async function serviceUrl(path) {
-  const base = await getServiceUrl();
-  return `${base}${path}`;
-}
+const CLOUD_API_URL = "https://antigravitymonitor.onrender.com";
+const AGENT_LOCAL_URL = "http://127.0.0.1:3580";        // local agent management server
 
 // ── Auth Token Management ─────────────────────────────────
 
@@ -54,88 +31,64 @@ async function getAuthHeaders() {
 }
 
 async function isLoggedIn() {
-  const token = await getAuthToken();
-  return !!token;
+  return !!(await getAuthToken());
 }
 
 // ── Alarms Setup ──────────────────────────────────────────
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.get(SERVICE_ENV_KEY).then((res) => {
-    if (!SERVICE_URLS[res[SERVICE_ENV_KEY]]) {
-      chrome.storage.local.set({ [SERVICE_ENV_KEY]: SERVICE_ENV_DEFAULT });
-    }
-  });
-  chrome.alarms.create("browser-checks", { periodInMinutes: 1 });
-  chrome.alarms.create("poll-alerts", { periodInMinutes: 0.5 });
+  chrome.alarms.create("poll-alerts",  { periodInMinutes: 0.5  });
+  chrome.alarms.create("ext-checks",   { periodInMinutes: 1    });
+  chrome.alarms.create("agent-status", { periodInMinutes: 1    });
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  chrome.storage.local.get(SERVICE_ENV_KEY).then((res) => {
-    if (!SERVICE_URLS[res[SERVICE_ENV_KEY]]) {
-      chrome.storage.local.set({ [SERVICE_ENV_KEY]: SERVICE_ENV_DEFAULT });
-    }
-  });
-  chrome.alarms.create("browser-checks", { periodInMinutes: 1 });
-  chrome.alarms.create("poll-alerts", { periodInMinutes: 0.5 });
+  chrome.alarms.create("poll-alerts",  { periodInMinutes: 0.5  });
+  chrome.alarms.create("ext-checks",   { periodInMinutes: 1    });
+  chrome.alarms.create("agent-status", { periodInMinutes: 1    });
 });
 
 // ── Alarm Handler ─────────────────────────────────────────
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (!(await isLoggedIn())) return; // Skip if not logged in
-
-  if (alarm.name === "browser-checks") {
-    await handleBrowserChecks();
-  } else if (alarm.name === "poll-alerts") {
-    await handleAlertPolling();
-  }
+  if (alarm.name === "poll-alerts")  await handleAlertPolling();
+  if (alarm.name === "ext-checks")   await handleExtensionChecks();
+  if (alarm.name === "agent-status") await checkAgentStatus();
 });
 
-// ── Browser-Assisted Checks ──────────────────────────────
+// ── Extension-Mode Checks (login-gated pages) ─────────────
 
-async function handleBrowserChecks() {
+async function handleExtensionChecks() {
+  if (!(await isLoggedIn())) return;
   try {
     const headers = await getAuthHeaders();
-    const resp = await fetch(
-      await serviceUrl("/monitors/pending-browser-checks"),
-      { headers }
-    );
+    const resp = await fetch(`${CLOUD_API_URL}/extension/jobs`, { headers });
     if (!resp.ok) return;
     const monitors = await resp.json();
-
     for (const monitor of monitors) {
-      await executeBrowserCheck(monitor);
+      await executeExtensionCheck(monitor);
     }
   } catch (err) {
-    console.log("[bg] Browser checks fetch failed:", err.message);
+    console.log("[bg] Extension checks fetch failed:", err.message);
   }
 }
 
-async function executeBrowserCheck(monitor) {
+async function executeExtensionCheck(monitor) {
   let tabId = null;
   try {
-    // Open hidden tab
-    const tab = await chrome.tabs.create({
-      url: monitor.url,
-      active: false,
-    });
+    // Open a hidden tab in the user's real Chrome session (carries login cookies)
+    const tab = await chrome.tabs.create({ url: monitor.url, active: false });
     tabId = tab.id;
 
     // Wait for page load + SPA settle
     await new Promise((r) => setTimeout(r, 5000));
 
-    // Execute script to read selector value
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: (selector) => {
         const el = document.querySelector(selector);
         if (!el) return { error: "Element not found" };
-        if (
-          el.tagName === "INPUT" ||
-          el.tagName === "TEXTAREA" ||
-          el.tagName === "SELECT"
-        ) {
+        if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT") {
           return { value: (el.value || "").trim() };
         }
         if (el.hasAttribute("content")) {
@@ -148,51 +101,55 @@ async function executeBrowserCheck(monitor) {
 
     const result = results?.[0]?.result || { error: "No result" };
 
-    // Post result to service
+    // Post result to cloud (same pipeline as agent)
     const headers = await getAuthHeaders();
-    await fetch(await serviceUrl(`/monitors/${monitor.id}/browser-result`), {
+    await fetch(`${CLOUD_API_URL}/extension/result/${monitor.id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify(result),
     });
 
-    console.log(`[bg] Browser check completed for monitor ${monitor.id}`);
+    console.log(`[bg] Extension check completed for monitor ${monitor.id}`);
   } catch (err) {
-    console.error(
-      `[bg] Browser check failed for monitor ${monitor.id}:`,
-      err.message
-    );
+    console.error(`[bg] Extension check failed for monitor ${monitor.id}:`, err.message);
     try {
       const headers = await getAuthHeaders();
-      await fetch(await serviceUrl(`/monitors/${monitor.id}/browser-result`), {
+      await fetch(`${CLOUD_API_URL}/extension/result/${monitor.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({ error: err.message }),
       });
-    } catch {
-      /* service unreachable */
-    }
+    } catch { /* cloud unreachable */ }
   } finally {
-    if (tabId) {
-      chrome.tabs.remove(tabId).catch(() => {});
-    }
+    if (tabId) chrome.tabs.remove(tabId).catch(() => {});
+  }
+}
+
+// ── Local Agent Status ─────────────────────────────────────
+
+async function checkAgentStatus() {
+  try {
+    const resp = await fetch(`${AGENT_LOCAL_URL}/status`, { signal: AbortSignal.timeout(2000) });
+    const data = resp.ok ? await resp.json() : null;
+    await chrome.storage.local.set({ agentStatus: data ? "online" : "offline" });
+  } catch {
+    await chrome.storage.local.set({ agentStatus: "offline" });
   }
 }
 
 // ── Alert Polling ─────────────────────────────────────────
 
 async function handleAlertPolling() {
+  if (!(await isLoggedIn())) return;
   try {
     const headers = await getAuthHeaders();
-    const resp = await fetch(await serviceUrl("/alerts/pending"), { headers });
+    const resp = await fetch(`${CLOUD_API_URL}/alerts/pending`, { headers });
     if (!resp.ok) return;
     const alerts = await resp.json();
 
     if (alerts.length === 0) return;
 
-    // Store unread alerts locally
-    const { unreadAlerts = [] } =
-      await chrome.storage.local.get("unreadAlerts");
+    const { unreadAlerts = [] } = await chrome.storage.local.get("unreadAlerts");
     const existingIds = new Set(unreadAlerts.map((a) => a.id));
     const newAlerts = alerts.filter((a) => !existingIds.has(a.id));
 
@@ -201,14 +158,11 @@ async function handleAlertPolling() {
     const merged = [...newAlerts, ...unreadAlerts].slice(0, 50);
     await chrome.storage.local.set({ unreadAlerts: merged });
 
-    // Update badge
     const count = merged.length;
     chrome.action.setBadgeText({ text: count > 0 ? String(count) : "" });
     chrome.action.setBadgeBackgroundColor({ color: "#ef4444" });
 
-    // Process each new alert
     for (const alert of newAlerts) {
-      // OS notification
       chrome.notifications.create(`alert-${alert.id}`, {
         type: "basic",
         iconUrl: "icons/icon128.png",
@@ -216,45 +170,31 @@ async function handleAlertPolling() {
         message: `"${truncate(alert.old_value)}" → "${truncate(alert.new_value)}"`,
       });
 
-      // In-page toast on all matching tabs
       try {
-        const monResp = await fetch(await serviceUrl("/monitors"), { headers });
+        const monResp = await fetch(`${CLOUD_API_URL}/monitors`, { headers });
         if (!monResp.ok) continue;
         const monitors = await monResp.json();
         const monitor = monitors.find((m) => m.id === alert.monitor_id);
-
         if (monitor) {
           const tabs = await chrome.tabs.query({});
           for (const tab of tabs) {
             if (tab.url && tab.id) {
-              try {
-                chrome.tabs.sendMessage(tab.id, {
-                  type: "SHOW_TOAST",
-                  payload: {
-                    label: alert.monitor_label,
-                    oldValue: alert.old_value,
-                    newValue: alert.new_value,
-                  },
-                });
-              } catch {
-                /* tab may not have content script */
-              }
+              chrome.tabs.sendMessage(tab.id, {
+                type: "SHOW_TOAST",
+                payload: {
+                  label: alert.monitor_label,
+                  oldValue: alert.old_value,
+                  newValue: alert.new_value,
+                },
+              }).catch(() => {});
             }
           }
         }
-      } catch {
-        /* best effort */
-      }
+      } catch { /* best effort */ }
 
-      // Acknowledge alert
       try {
-        await fetch(await serviceUrl(`/alerts/${alert.id}/ack`), {
-          method: "POST",
-          headers,
-        });
-      } catch {
-        /* will retry next poll */
-      }
+        await fetch(`${CLOUD_API_URL}/alerts/${alert.id}/ack`, { method: "POST", headers });
+      } catch { /* will retry next poll */ }
     }
   } catch (err) {
     console.log("[bg] Alert polling failed:", err.message);
@@ -269,44 +209,26 @@ function truncate(str, max = 50) {
 // ── OAuth Callback Tab Interception ───────────────────────
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  const currentServiceUrl = await getServiceUrl();
-  // Watch for the auth callback URL
   if (
     changeInfo.status === "complete" &&
     tab.url &&
-    tab.url.startsWith(`${currentServiceUrl}/auth/callback`)
+    tab.url.startsWith(`${CLOUD_API_URL}/auth/callback`)
   ) {
-    // Give the page a moment to process the hash fragment
     await new Promise((r) => setTimeout(r, 1000));
-
-    // Read the title which contains the auth tokens
     try {
       const results = await chrome.scripting.executeScript({
         target: { tabId },
         func: () => document.title,
       });
-
       const title = results?.[0]?.result || "";
-
       if (title.startsWith("PAGE_MONITOR_AUTH:")) {
         const tokenData = JSON.parse(title.replace("PAGE_MONITOR_AUTH:", ""));
-
         if (tokenData.access_token) {
-          // Store the session
           await chrome.storage.local.set({ authSession: tokenData });
-
           console.log("[bg] Auth tokens stored successfully");
-
-          // Close the auth tab
           chrome.tabs.remove(tabId).catch(() => {});
-
-          // Clear any auth-related badge
           chrome.action.setBadgeText({ text: "" });
-
-          // Notify any open popup
-          chrome.runtime
-            .sendMessage({ type: "AUTH_STATE_CHANGED", loggedIn: true })
-            .catch(() => {});
+          chrome.runtime.sendMessage({ type: "AUTH_STATE_CHANGED", loggedIn: true }).catch(() => {});
         }
       }
     } catch (err) {
@@ -323,7 +245,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     handler(msg, sender)
       .then(sendResponse)
       .catch((err) => sendResponse({ error: err.message }));
-    return true; // async response
+    return true;
   }
 });
 
@@ -331,9 +253,7 @@ const messageHandlers = {
   // ── Auth ──────────────────────────────────────────────
 
   async SIGN_IN() {
-    // Open the Google OAuth flow in a new tab
-    const authUrl = await serviceUrl("/auth/google");
-    await chrome.tabs.create({ url: authUrl });
+    await chrome.tabs.create({ url: `${CLOUD_API_URL}/auth/google` });
     return { ok: true };
   },
 
@@ -349,6 +269,13 @@ const messageHandlers = {
     return { loggedIn: !!authSession?.access_token };
   },
 
+  // ── Agent Status ──────────────────────────────────────
+
+  async GET_AGENT_STATUS() {
+    const { agentStatus = "unknown" } = await chrome.storage.local.get("agentStatus");
+    return { status: agentStatus };
+  },
+
   // ── Element picked from content script ────────────────
 
   async ELEMENT_PICKED(msg) {
@@ -358,49 +285,41 @@ const messageHandlers = {
     return { ok: true };
   },
 
-  // Popup: get pending element
   async GET_PENDING_ELEMENT() {
     const { pendingElement = null } =
       await chrome.storage.session.get("pendingElement");
     return pendingElement;
   },
 
-  // Popup: clear pending element
   async CLEAR_PENDING_ELEMENT() {
     await chrome.storage.session.remove("pendingElement");
     chrome.action.setBadgeText({ text: "" });
     return { ok: true };
   },
 
-  // Popup: activate picker on current tab
   async ACTIVATE_PICKER() {
-    const [tab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
-    if (tab?.id) {
-      await chrome.tabs.sendMessage(tab.id, { type: "ACTIVATE_PICKER" });
-    }
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id) await chrome.tabs.sendMessage(tab.id, { type: "ACTIVATE_PICKER" });
     return { ok: true };
   },
 
-  // ── Service API proxies ──────────────────────────────
+  // ── Cloud API Proxies ────────────────────────────────
 
   async GET_HEALTH() {
-    const resp = await fetch(await serviceUrl("/health"));
+    const resp = await fetch(`${CLOUD_API_URL}/health`);
     return resp.json();
   },
 
   async GET_MONITORS() {
     const headers = await getAuthHeaders();
-    const resp = await fetch(await serviceUrl("/monitors"), { headers });
+    const resp = await fetch(`${CLOUD_API_URL}/monitors`, { headers });
     if (!resp.ok) throw new Error("Unauthorized");
     return resp.json();
   },
 
   async CREATE_MONITOR(msg) {
     const headers = await getAuthHeaders();
-    const resp = await fetch(await serviceUrl("/monitors"), {
+    const resp = await fetch(`${CLOUD_API_URL}/monitors`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify(msg.payload),
@@ -411,42 +330,17 @@ const messageHandlers = {
 
   async DELETE_MONITOR(msg) {
     const headers = await getAuthHeaders();
-    const resp = await fetch(await serviceUrl(`/monitors/${msg.payload.id}`), {
+    const resp = await fetch(`${CLOUD_API_URL}/monitors/${msg.payload.id}`, {
       method: "DELETE",
       headers,
     });
     return resp.json();
   },
 
-  async CHECK_MONITOR(msg) {
-    const headers = await getAuthHeaders();
-    const resp = await fetch(
-      await serviceUrl(`/monitors/${msg.payload.id}/check`),
-      {
-        method: "POST",
-        headers,
-      }
-    );
-    return resp.json();
-  },
-
   async GET_HISTORY(msg) {
     const headers = await getAuthHeaders();
-    const resp = await fetch(
-      await serviceUrl(`/monitors/${msg.payload.id}/history`),
-      { headers }
-    );
+    const resp = await fetch(`${CLOUD_API_URL}/monitors/${msg.payload.id}/history`, { headers });
     return resp.json();
-  },
-
-  async GET_SERVICE_ENV() {
-    const env = await getServiceEnv();
-    return { env, url: SERVICE_URLS[env] };
-  },
-
-  async SET_SERVICE_ENV(msg) {
-    const env = await setServiceEnv(msg?.payload?.env);
-    return { ok: true, env, url: SERVICE_URLS[env] };
   },
 
   async GET_UNREAD_ALERTS() {
@@ -460,8 +354,7 @@ const messageHandlers = {
       await chrome.storage.local.get("unreadAlerts");
     const filtered = unreadAlerts.filter((a) => a.id !== msg.payload.id);
     await chrome.storage.local.set({ unreadAlerts: filtered });
-    const count = filtered.length;
-    chrome.action.setBadgeText({ text: count > 0 ? String(count) : "" });
+    chrome.action.setBadgeText({ text: filtered.length > 0 ? String(filtered.length) : "" });
     return { ok: true };
   },
 
@@ -476,12 +369,7 @@ const messageHandlers = {
 
 chrome.commands.onCommand.addListener(async (command) => {
   if (command === "activate-picker") {
-    const [tab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
-    if (tab?.id) {
-      await chrome.tabs.sendMessage(tab.id, { type: "ACTIVATE_PICKER" });
-    }
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id) await chrome.tabs.sendMessage(tab.id, { type: "ACTIVATE_PICKER" });
   }
 });

@@ -1,8 +1,12 @@
 /**
- * index.js — Service entrypoint
+ * index.js — Cloud API entrypoint (Render)
  *
- * Express server on 127.0.0.1:3579 (localhost-only).
- * Loads API routes, auth routes, and starts the monitor scheduler.
+ * Lightweight Express server. No Playwright, no scheduler.
+ * All browser work is handled by the local agent.
+ *
+ * Env vars required (set in Render dashboard):
+ *   SUPABASE_URL, SUPABASE_SERVICE_KEY, SUPABASE_ANON_KEY,
+ *   AGENT_SECRET
  */
 
 // `dotenv` is useful locally, but optional in cloud runtimes like Render
@@ -19,29 +23,23 @@ const express = require("express");
 const cors = require("cors");
 const api = require("./api");
 const auth = require("./auth");
-const { loadAllSchedules } = require("./scheduler");
 
 const PORT = process.env.PORT || 3579;
-const HOST = "127.0.0.1";
 
 const app = express();
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
 // Routes
-app.use(auth);   // /auth/google, /auth/callback (public)
-app.use(api);    // /health (public), everything else (protected)
+app.use(auth);  // /auth/google, /auth/callback (public)
+app.use(api);   // /health, /monitors, /alerts, /agent/*, /extension/*
 
-// Start
-app.listen(PORT, HOST, async () => {
-  console.log(`\n  ┌─────────────────────────────────────────────┐`);
-  console.log(`  │  Page Monitor Service                        │`);
-  console.log(`  │  Running on http://${HOST}:${PORT}          │`);
-  console.log(`  │  Database: Supabase (PostgreSQL)              │`);
-  console.log(`  └─────────────────────────────────────────────┘\n`);
-
-  // Load existing monitor schedules
-  await loadAllSchedules();
+app.listen(PORT, () => {
+  console.log(`\n  ┌────────────────────────────────────────────────┐`);
+  console.log(`  │  Page Monitor Cloud API                        │`);
+  console.log(`  │  Listening on port ${String(PORT).padEnd(27)}│`);
+  console.log(`  │  Database : Supabase (PostgreSQL)              │`);
+  console.log(`  │  Scheduler: Delegated to local agent           │`);
+  console.log(`  └────────────────────────────────────────────────┘\n`);
 });
