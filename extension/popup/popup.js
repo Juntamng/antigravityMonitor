@@ -15,7 +15,6 @@
   const signOutBtn = document.getElementById("sign-out-btn");
 
   const statusDot = document.getElementById("status-dot");
-  const serviceEnvSelect = document.getElementById("service-env-select");
   const alertsBanner = document.getElementById("alerts-banner");
   const alertsList = document.getElementById("alerts-list");
   const dismissAllBtn = document.getElementById("dismiss-all-btn");
