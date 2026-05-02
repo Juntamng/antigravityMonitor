@@ -5,10 +5,12 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js"
+    "dev": "cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 node --watch index.js",
+    "start:local": "cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 node index.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
+    "cross-env": "^10.1.0",
     "dotenv": "^16.4.7",
     "playwright": "^1.52.0"
   },
