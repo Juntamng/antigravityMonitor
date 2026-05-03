@@ -3,6 +3,8 @@
  */
 
 (() => {
+  const backendTarget = document.getElementById("backend-target");
+
   const statusDot = document.getElementById("status-dot");
   const alertsBanner = document.getElementById("alerts-banner");
   const alertsList = document.getElementById("alerts-list");
@@ -65,8 +67,15 @@
     if (!statusDot) return;
     try {
       const resp = await sendMsg("GET_HEALTH");
+      const base = resp?.activeUrl || "";
       statusDot.className = resp?.ok ? "status-dot online" : "status-dot offline";
-      statusDot.title = resp?.ok ? "Backend online" : "Backend offline";
+      statusDot.title = resp?.ok
+        ? base
+          ? `Backend online — ${base}`
+          : "Backend online"
+        : base
+          ? `Backend offline — ${base}`
+          : "Backend offline";
     } catch {
       statusDot.className = "status-dot offline";
       statusDot.title = "Backend offline";
@@ -388,7 +397,37 @@
     setInterval(checkHealth, 10000);
   }
 
+  async function initBackendBar() {
+    if (!backendTarget) return;
+    try {
+      const opts = await sendMsg("GET_BACKEND_OPTIONS");
+      if (opts?.error) return;
+      backendTarget.value = opts.target === "local" ? "local" : "hosted";
+      if (opts.activeUrl) backendTarget.title = `Active: ${opts.activeUrl}`;
+    } catch {
+      /* ignore */
+    }
+
+    backendTarget.addEventListener("change", async () => {
+      const target = backendTarget.value;
+      try {
+        const res = await sendMsg("SET_BACKEND_TARGET", { target });
+        if (res?.error) throw new Error(res.error);
+        if (res?.activeUrl) backendTarget.title = `Active: ${res.activeUrl}`;
+      } catch {
+        backendTarget.title = "";
+      }
+      await checkHealth();
+      const main = document.getElementById("app-main");
+      if (main && !main.classList.contains("hidden")) {
+        loadAlerts();
+        loadMonitors();
+      }
+    });
+  }
+
   async function init() {
+    await initBackendBar();
     window.PageMonitorAuth.bindAuthForm();
     const ok = await window.PageMonitorAuth.init();
     if (ok) {
