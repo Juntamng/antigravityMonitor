@@ -32,6 +32,8 @@
     "identity"
   ],
   "host_permissions": [
+    "https://*/*",
+    "http://*/*",
     "https://antigravitymonitor.onrender.com/*",
     "http://127.0.0.1:3579/*",
     "https://avvadnrovreimjfqbqdl.supabase.co/*"

@@ -213,7 +213,11 @@
   });
 
   pickElementBtn.addEventListener("click", async () => {
-    await sendMsg("ACTIVATE_PICKER");
+    const resp = await sendMsg("ACTIVATE_PICKER");
+    if (resp?.error) {
+      console.warn("Picker activation failed:", resp.error);
+      return;
+    }
     window.close();
   });
 

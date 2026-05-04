@@ -311,10 +311,31 @@ const messageHandlers = {
 
   async ACTIVATE_PICKER() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id) {
-      await chrome.tabs.sendMessage(tab.id, { type: "ACTIVATE_PICKER" });
+    if (!tab?.id) {
+      return { error: "No active tab found" };
     }
-    return { ok: true };
+    const url = tab.url || "";
+    if (
+      url.startsWith("chrome://") ||
+      url.startsWith("chrome-extension://") ||
+      url.startsWith("edge://") ||
+      url.startsWith("about:")
+    ) {
+      return { error: "Picker is not available on this browser page" };
+    }
+
+    try {
+      await chrome.tabs.sendMessage(tab.id, { type: "ACTIVATE_PICKER" });
+      return { ok: true };
+    } catch {
+      // Content script might not be present yet (e.g. after extension reload); inject and retry.
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ["content.js"],
+      });
+      await chrome.tabs.sendMessage(tab.id, { type: "ACTIVATE_PICKER" });
+      return { ok: true };
+    }
   },
 
   async GET_AUTH_STATE() {
