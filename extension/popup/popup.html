@@ -7,14 +7,6 @@
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <div class="backend-bar" id="backend-bar">
-      <label class="backend-bar-label" for="backend-target">Backend</label>
-      <select id="backend-target" class="backend-select" aria-label="API backend" title="Where the extension sends API requests">
-        <option value="hosted">Vendor hosting</option>
-        <option value="local">Local</option>
-      </select>
-    </div>
-
     <!-- ── Auth (logged out) ───────────────────────────── -->
     <div class="auth-section" id="auth-section">
       <div class="header">
@@ -27,8 +19,7 @@
         <div class="section-title">Sign in</div>
         <p class="auth-hint">
           Configure <code>extension/config.js</code> with
-          <code>BACKEND_URL_HOSTED</code>, <code>BACKEND_URL_LOCAL</code>, and Supabase
-          <code>SUPABASE_ANON_KEY</code>.
+          <code>BACKEND_URL</code> and Supabase <code>SUPABASE_ANON_KEY</code>.
         </p>
         <div class="form-group">
           <label class="form-label" for="auth-email">Email</label>

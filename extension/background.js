@@ -8,25 +8,13 @@
 importScripts("config.js");
 
 const C = self.PAGE_MONITOR_CONFIG;
-const STORAGE_BACKEND_KEY = "pageMonitorBackendTarget";
 
 function normalizeBackendUrl(url) {
   return String(url || "").replace(/\/$/, "");
 }
 
-async function getBackendTarget() {
-  const stored = await chrome.storage.local.get(STORAGE_BACKEND_KEY);
-  const t = stored[STORAGE_BACKEND_KEY];
-  return t === "local" ? "local" : "hosted";
-}
-
 async function getBackendUrl() {
-  const target = await getBackendTarget();
-  const hosted = C.BACKEND_URL_HOSTED || C.BACKEND_URL;
-  const raw =
-    target === "local"
-      ? C.BACKEND_URL_LOCAL || "http://127.0.0.1:3579"
-      : hosted || "http://127.0.0.1:3579";
+  const raw = C.BACKEND_URL_HOSTED || C.BACKEND_URL || C.Backend_URL || "http://127.0.0.1:3579";
   return normalizeBackendUrl(raw);
 }
 
@@ -451,26 +439,6 @@ const messageHandlers = {
     const resp = await fetch(`${base}/health`);
     const json = await resp.json().catch(() => ({}));
     return { ...json, activeUrl: base };
-  },
-
-  async GET_BACKEND_OPTIONS() {
-    const target = await getBackendTarget();
-    const hosted = normalizeBackendUrl(C.BACKEND_URL_HOSTED || C.BACKEND_URL);
-    const local = normalizeBackendUrl(C.BACKEND_URL_LOCAL || "http://127.0.0.1:3579");
-    return {
-      target,
-      urls: { hosted, local },
-      activeUrl: await getBackendUrl(),
-    };
-  },
-
-  async SET_BACKEND_TARGET(msg) {
-    const t = msg.payload?.target;
-    if (t !== "local" && t !== "hosted") {
-      throw new Error("Invalid backend target");
-    }
-    await chrome.storage.local.set({ [STORAGE_BACKEND_KEY]: t });
-    return { ok: true, target: t, activeUrl: await getBackendUrl() };
   },
 
   async GET_MONITORS() {
