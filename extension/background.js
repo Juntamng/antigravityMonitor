@@ -366,17 +366,6 @@ const messageHandlers = {
     }
   },
 
-  async LOGIN(msg) {
-    const { email, password } = msg.payload || {};
-    const data = await supabaseAuthFetch("/auth/v1/token?grant_type=password", {
-      email,
-      password,
-    });
-    const session = sessionFromAuthResponse(data);
-    await setSession(session);
-    return { ok: true, email: session.user?.email };
-  },
-
   async LOGOUT() {
     await setSession(null);
     chrome.action.setBadgeText({ text: "" });

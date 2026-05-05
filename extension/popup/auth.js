@@ -1,5 +1,5 @@
 /**
- * auth.js — Popup auth UI (email/password + Google via background)
+ * auth.js — Popup auth UI (Google login via background)
  */
 (function () {
   const authSection = () => document.getElementById("auth-section");
@@ -52,35 +52,8 @@
     },
 
     bindAuthForm() {
-      const emailEl = document.getElementById("auth-email");
-      const passEl = document.getElementById("auth-password");
-      const loginBtn = document.getElementById("auth-login-btn");
       const googleBtn = document.getElementById("auth-google-btn");
       const logoutBtn = document.getElementById("logout-btn");
-
-      loginBtn?.addEventListener("click", async () => {
-        showError("");
-        const email = emailEl?.value?.trim();
-        const password = passEl?.value || "";
-        if (!email || !password) {
-          showError("Enter email and password.");
-          return;
-        }
-        loginBtn.disabled = true;
-        loginBtn.textContent = "Signing in…";
-        try {
-          const res = await sendMsg("LOGIN", { email, password });
-          if (res?.error) throw new Error(res.error);
-          setLoggedInUI(res.email);
-          passEl.value = "";
-          window.dispatchEvent(new CustomEvent("page-monitor:auth-changed"));
-        } catch (e) {
-          showError(e.message || "Login failed");
-        } finally {
-          loginBtn.disabled = false;
-          loginBtn.textContent = "Sign in";
-        }
-      });
 
       googleBtn?.addEventListener("click", async () => {
         showError("");
