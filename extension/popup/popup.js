@@ -159,11 +159,11 @@
       </div>
       <div class="confirm-preview-row">
         <span class="confirm-preview-key">Selector</span>
-        <span class="confirm-preview-val" style="font-family:monospace;font-size:10px">${esc(truncate(e.selector, 60))}</span>
+        <span class="confirm-preview-val confirm-preview-code">${esc(truncate(e.selector, 60))}</span>
       </div>
       <div class="confirm-preview-row">
-        <span class="confirm-preview-key">Value</span>
-        <span class="confirm-preview-val" style="color:var(--accent-light)">${esc(truncate(e.value, 50))}</span>
+        <span class="confirm-preview-key">Current value</span>
+        <span class="confirm-preview-val confirm-preview-accent">${esc(truncate(e.value, 50))}</span>
       </div>
     `;
 
@@ -208,7 +208,7 @@
         label,
         url: pendingElement.url,
         selector: pendingElement.selector,
-        interval_minutes: interval || 5,
+        interval_minutes: interval || 15,
         last_value: pendingElement.value,
       });
       if (res?.error) throw new Error(res.error);

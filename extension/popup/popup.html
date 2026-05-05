@@ -65,18 +65,15 @@
             maxlength="100"
           />
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label" for="monitor-interval">Check every (min)</label>
-            <input
-              type="number"
-              class="form-input"
-              id="monitor-interval"
-              value="5"
-              min="1"
-              max="1440"
-            />
-          </div>
+        <div class="form-group">
+          <label class="form-label" for="monitor-interval">Check every</label>
+          <select class="form-input" id="monitor-interval">
+            <option value="5">5 minutes</option>
+            <option value="15" selected>15 minutes</option>
+            <option value="30">30 minutes</option>
+            <option value="60">1 hour</option>
+            <option value="1440">1 day</option>
+          </select>
         </div>
         <div class="confirm-actions">
           <button class="btn btn-ghost" id="cancel-confirm-btn">Cancel</button>
