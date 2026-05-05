@@ -138,6 +138,7 @@
   async function checkPendingElement() {
     const el = await sendMsg("GET_PENDING_ELEMENT");
     if (el) {
+      await sendMsg("CLOSE_SAVE_PANEL_ACTIVE_TAB");
       pendingElement = el;
       showConfirmView();
     }
@@ -199,6 +200,10 @@
     saveMonitorBtn.innerHTML = '<span class="spinner"></span> Saving…';
 
     try {
+      if (!pendingElement) {
+        throw new Error("No pending element to save");
+      }
+
       const res = await sendMsg("CREATE_MONITOR", {
         label,
         url: pendingElement.url,

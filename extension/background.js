@@ -300,10 +300,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 const messageHandlers = {
-  async ELEMENT_PICKED(msg) {
+  async ELEMENT_PICKED(msg, sender) {
     await chrome.storage.session.set({ pendingElement: msg.payload });
     chrome.action.setBadgeText({ text: "1" });
     chrome.action.setBadgeBackgroundColor({ color: "#6366f1" });
+    if (sender?.tab?.id) {
+      chrome.tabs
+        .sendMessage(sender.tab.id, {
+          type: "SHOW_SAVE_PANEL",
+          payload: msg.payload,
+        })
+        .catch(() => {});
+    }
     return { ok: true };
   },
 
@@ -315,6 +323,17 @@ const messageHandlers = {
   async CLEAR_PENDING_ELEMENT() {
     await chrome.storage.session.remove("pendingElement");
     chrome.action.setBadgeText({ text: "" });
+    return { ok: true };
+  },
+
+  async CLOSE_SAVE_PANEL_ACTIVE_TAB() {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) return { ok: true };
+    await chrome.tabs
+      .sendMessage(tab.id, {
+        type: "CLOSE_SAVE_PANEL",
+      })
+      .catch(() => {});
     return { ok: true };
   },
 
