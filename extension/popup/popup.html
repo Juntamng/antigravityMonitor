@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -22,7 +22,11 @@
           <code>BACKEND_URL</code> and Supabase <code>SUPABASE_ANON_KEY</code>.
         </p>
         <div id="auth-error" class="auth-error hidden"></div>
-        <button class="btn btn-primary" id="auth-google-btn" style="width: 100%; margin-top: 8px">
+        <button
+          class="btn btn-primary"
+          id="auth-google-btn"
+          style="width: 100%; margin-top: 8px"
+        >
           Continue with Google
         </button>
       </div>
@@ -38,7 +42,12 @@
         <div class="header-actions">
           <span class="user-email" id="user-email" title=""></span>
           <div class="status-dot" id="status-dot" title="Backend status"></div>
-          <button class="btn btn-ghost btn-sm" id="logout-btn" type="button" title="Sign out">
+          <button
+            class="btn btn-ghost btn-sm"
+            id="logout-btn"
+            type="button"
+            title="Sign out"
+          >
             Log out
           </button>
         </div>
@@ -47,7 +56,9 @@
       <div class="alerts-banner" id="alerts-banner">
         <div class="alerts-header">
           <span>🔔 Unread Changes</span>
-          <button class="btn btn-ghost btn-sm" id="dismiss-all-btn">Clear All</button>
+          <button class="btn btn-ghost btn-sm" id="dismiss-all-btn">
+            Clear All
+          </button>
         </div>
         <div id="alerts-list"></div>
       </div>
@@ -68,6 +79,7 @@
         <div class="form-group">
           <label class="form-label" for="monitor-interval">Check every</label>
           <select class="form-input" id="monitor-interval">
+            <option value="1">1 minute</option>
             <option value="5">5 minutes</option>
             <option value="15" selected>15 minutes</option>
             <option value="30">30 minutes</option>
@@ -77,16 +89,27 @@
         </div>
         <div class="confirm-actions">
           <button class="btn btn-ghost" id="cancel-confirm-btn">Cancel</button>
-          <button class="btn btn-primary" id="save-monitor-btn">Start Monitoring</button>
+          <button class="btn btn-primary" id="save-monitor-btn">
+            Start Monitoring
+          </button>
         </div>
       </div>
 
       <div class="picker-bar" id="picker-bar">
-        <button class="btn btn-primary" id="pick-element-btn">🎯 Pick Element</button>
+        <button class="btn btn-primary" id="pick-element-btn">
+          🎯 Pick Element
+        </button>
         <span class="picker-hint"
           >or press
           <kbd
-            style="font-family:monospace;background:#1c1c30;padding:1px 5px;border-radius:3px;font-size:11px;border:1px solid rgba(99,102,241,0.2)"
+            style="
+              font-family: monospace;
+              background: #1c1c30;
+              padding: 1px 5px;
+              border-radius: 3px;
+              font-size: 11px;
+              border: 1px solid rgba(99, 102, 241, 0.2);
+            "
             >Alt+Shift+P</kbd
           ></span
         >

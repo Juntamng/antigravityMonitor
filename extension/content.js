@@ -362,6 +362,7 @@
         <div style="display:grid;gap:6px;margin-bottom:12px;">
           <label for="__pcm-save-interval" style="font-size:12px;color:#94a3b8;">Check every</label>
           <select id="__pcm-save-interval" style="height:34px;border:1px solid #334155;border-radius:8px;background:#0f172a;color:#e2e8f0;padding:0 10px;font-size:13px;outline:none;">
+            <option value="1">1 minute</option>
             <option value="5">5 minutes</option>
             <option value="15" selected>15 minutes</option>
             <option value="30">30 minutes</option>
