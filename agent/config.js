@@ -8,6 +8,12 @@ const HEARTBEAT_INTERVAL_MS =
   Number(process.env.HEARTBEAT_INTERVAL_MS) || 30_000;
 const DEBUG = process.env.DEBUG === "true" || process.env.DEBUG === "1";
 
+// Optional: connect to a real running Chrome via Chrome DevTools Protocol.
+// Set to e.g. "http://localhost:9222" after launching Chrome with
+// --remote-debugging-port=9222. Falls back to headless if not set or
+// if Chrome is unreachable.
+const CDP_URL = process.env.CDP_URL || null;
+
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error(
     "[config] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY — copy .env.example to .env"
@@ -22,4 +28,5 @@ module.exports = {
   POLL_INTERVAL_MS,
   HEARTBEAT_INTERVAL_MS,
   DEBUG,
+  CDP_URL,
 };

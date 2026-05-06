@@ -3,19 +3,50 @@
  */
 
 const { chromium } = require("playwright");
+const { CDP_URL, DEBUG } = require("./config");
 
+/** @type {import('playwright').Browser|null} */
 let sharedBrowser = null;
 
+/**
+ * Resolve a browser instance using the best available method, in priority order:
+ *
+ *   1. CDP — connect to a real running Chrome (set CDP_URL in .env).
+ *      Uses the user's actual session: real cookies, real IP, real fingerprints.
+ *      Bypasses Akamai, Cloudflare, and any bot-protection that fingerprints
+ *      headless browsers at the TLS/JS layer.
+ *
+ *   2. System Chrome headless — installed Chrome binary, launched headless.
+ *      Better TLS fingerprint than Playwright's bundled Chromium but still
+ *      detectable by advanced bot-protection.
+ *
+ *   3. Playwright bundled Chromium headless — last resort.
+ *
+ * Returns { browser, mode } where mode is one of:
+ *   "cdp"                — real Chrome via CDP
+ *   "headless-chrome"    — system Chrome headless
+ *   "headless-chromium"  — Playwright bundled Chromium headless
+ */
 async function getBrowser() {
+  // ── 1. Real Chrome via CDP ───────────────────────────────────────────────
+  const cdpTarget = CDP_URL || "http://localhost:9222";
   try {
-    const browser = await chromium.connectOverCDP("http://localhost:9222", {
-      timeout: 3000,
-    });
-    return { browser, owned: false };
+    const browser = await chromium.connectOverCDP(cdpTarget, { timeout: 3000 });
+    console.log(`[checker] Connected to real Chrome via CDP at ${cdpTarget}`);
+    return { browser, mode: "cdp" };
   } catch {
-    /* no CDP */
+    if (CDP_URL) {
+      // User explicitly set CDP_URL but Chrome is unreachable — warn clearly
+      console.warn(
+        `[checker] CDP_URL is set to "${CDP_URL}" but Chrome is not reachable. ` +
+        `Make sure Chrome is running with --remote-debugging-port. Falling back to headless.`
+      );
+    } else if (DEBUG) {
+      console.log(`[checker] No Chrome found at ${cdpTarget}, using headless`);
+    }
   }
 
+  // ── 2. System Chrome headless ────────────────────────────────────────────
   try {
     if (!sharedBrowser || !sharedBrowser.isConnected()) {
       sharedBrowser = await chromium.launch({
@@ -24,18 +55,21 @@ async function getBrowser() {
         args: ["--disable-blink-features=AutomationControlled"],
       });
     }
-    return { browser: sharedBrowser, owned: true };
+    if (DEBUG) console.log("[checker] Using system Chrome (headless)");
+    return { browser: sharedBrowser, mode: "headless-chrome" };
   } catch {
-    /* no system Chrome */
+    /* system Chrome not installed */
   }
 
+  // ── 3. Playwright bundled Chromium ───────────────────────────────────────
   if (!sharedBrowser || !sharedBrowser.isConnected()) {
     sharedBrowser = await chromium.launch({
       headless: true,
       args: ["--disable-blink-features=AutomationControlled"],
     });
   }
-  return { browser: sharedBrowser, owned: true };
+  if (DEBUG) console.log("[checker] Using Playwright bundled Chromium (headless)");
+  return { browser: sharedBrowser, mode: "headless-chromium" };
 }
 
 /**
@@ -103,17 +137,46 @@ async function detectBotChallenge(page, url) {
  * @returns {Promise<string>}
  */
 async function checkSelector(monitor) {
-  const { browser } = await getBrowser();
-  const context = await browser.newContext({
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-  });
+  const { browser, mode } = await getBrowser();
+  const isCdp = mode === "cdp";
 
-  await context.addInitScript(() => {
-    Object.defineProperty(navigator, "webdriver", {
-      get: () => false,
+  // ── Context setup ─────────────────────────────────────────────────────────
+  //
+  // CDP (real Chrome):
+  //   Re-use the existing default browser context so checks run inside the
+  //   user's real Chrome session — real cookies, saved passwords, browsing
+  //   history, and fingerprints. Creating a new context via newContext()
+  //   would open an incognito-like window and lose all of that.
+  //   We DO NOT override userAgent or navigator.webdriver; the real browser
+  //   already has the correct values and overriding them would be detectable.
+  //
+  // Headless:
+  //   Create a fresh isolated context with a realistic userAgent and the
+  //   webdriver property patched.
+  //
+  let context;
+  let ownContext = false; // whether we created the context (and must close it)
+
+  if (isCdp) {
+    const existing = browser.contexts();
+    if (existing.length > 0) {
+      context = existing[0];
+    } else {
+      // Chrome is open but has no windows yet (rare) — open a default context
+      context = await browser.newContext();
+      ownContext = true;
+    }
+  } else {
+    context = await browser.newContext({
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
     });
-  });
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, "webdriver", { get: () => false });
+    });
+    ownContext = true;
+  }
 
   const page = await context.newPage();
 
@@ -134,6 +197,8 @@ async function checkSelector(monitor) {
     // serves a challenge page to headless browsers that no amount of waiting
     // will resolve without real user interaction. Fail fast with a clear,
     // actionable error so users know to switch to browser-assisted checks.
+    // (When connected via CDP the real Chrome normally passes these, but we
+    // still check in case something unexpected happens.)
     await detectBotChallenge(page, monitor.url);
 
     await page.waitForFunction(
@@ -177,7 +242,13 @@ async function checkSelector(monitor) {
 
     return (value || "").trim().slice(0, 5000);
   } finally {
-    await context.close().catch(() => {});
+    // Always close the temporary page we opened
+    await page.close().catch(() => {});
+    // Only close the context if we created it — never close the real user's
+    // browser context when connected via CDP
+    if (ownContext) {
+      await context.close().catch(() => {});
+    }
   }
 }
 
