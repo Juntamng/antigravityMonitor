@@ -39,6 +39,66 @@ async function getBrowser() {
 }
 
 /**
+ * Throws a descriptive error if the page is a bot-management challenge rather
+ * than the real target page. Covers Akamai Bot Manager (Home Depot, Walmart,
+ * Lowe's, etc.), Cloudflare, and generic "access denied" patterns.
+ *
+ * When this throws, the caller should surface the error and the user should
+ * switch the monitor to execution_mode="browser" so the extension opens a
+ * real Chrome tab, which bypasses bot detection.
+ */
+async function detectBotChallenge(page, url) {
+  const { title, html } = await page.evaluate(() => ({
+    title: document.title,
+    html: document.documentElement.innerHTML.slice(0, 8000),
+  }));
+
+  const lower = html.toLowerCase();
+
+  // Akamai Bot Manager indicators
+  const isAkamaiChallenge =
+    lower.includes("sec-if-cpt-container") ||
+    lower.includes("scf-akamai-logo") ||
+    lower.includes("_bman_adv") ||
+    lower.includes("akamai.com/privacy") ||
+    (title === "Error Page" && lower.includes("_bman"));
+
+  // Cloudflare indicators
+  const isCloudflareCaptcha =
+    lower.includes("cf-browser-verification") ||
+    lower.includes("cf_chl_") ||
+    (lower.includes("cloudflare") && lower.includes("verify you are human"));
+
+  // Generic access-denied indicators (page under 15 KB is a heuristic for
+  // a challenge/error page vs a real product page)
+  const isAccessDenied =
+    (title === "Access Denied" || title === "403 Forbidden" || title === "Just a moment...") ||
+    (html.length < 15000 &&
+      (lower.includes("access denied") || lower.includes("captcha")));
+
+  if (isAkamaiChallenge) {
+    throw new Error(
+      `Bot-protection challenge detected on ${url} (Akamai Bot Manager). ` +
+      `Headless browsers cannot pass this check. ` +
+      `Switch this monitor to execution_mode="browser" so the extension uses a real Chrome tab instead.`
+    );
+  }
+  if (isCloudflareCaptcha) {
+    throw new Error(
+      `Cloudflare CAPTCHA detected on ${url}. ` +
+      `Switch this monitor to execution_mode="browser".`
+    );
+  }
+  if (isAccessDenied) {
+    throw new Error(
+      `Access denied on ${url} (title="${title}"). ` +
+      `The site may be blocking automated requests. ` +
+      `Switch this monitor to execution_mode="browser".`
+    );
+  }
+}
+
+/**
  * @param {{ url: string, selector: string }} monitor
  * @returns {Promise<string>}
  */
@@ -68,6 +128,13 @@ async function checkSelector(monitor) {
     } catch {
       // Site uses persistent polling/websockets — proceed to selector wait anyway.
     }
+
+    // Detect bot-management challenge pages before spending time waiting for
+    // the selector. Akamai Bot Manager (used by Home Depot, Walmart, etc.)
+    // serves a challenge page to headless browsers that no amount of waiting
+    // will resolve without real user interaction. Fail fast with a clear,
+    // actionable error so users know to switch to browser-assisted checks.
+    await detectBotChallenge(page, monitor.url);
 
     await page.waitForFunction(
       (sel) => {

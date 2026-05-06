@@ -113,6 +113,35 @@ router.get("/monitors", requireAuth, withUserClient, async (req, res) => {
   }
 });
 
+/**
+ * Major retail / e-commerce sites that use Akamai Bot Manager or similar
+ * multi-layer bot protection. Headless browsers are reliably blocked on these
+ * domains; only a real Chrome tab opened by the extension can pass through.
+ * Monitors for these URLs must use execution_mode="browser".
+ */
+const BOT_PROTECTED_DOMAINS = new Set([
+  "homedepot.com",
+  "walmart.com",
+  "target.com",
+  "bestbuy.com",
+  "lowes.com",
+  "costco.com",
+  "macys.com",
+  "kohls.com",
+  "newegg.com",
+]);
+
+function isBotProtectedUrl(rawUrl) {
+  try {
+    const { hostname } = new URL(rawUrl);
+    // Strip www. / subdomain prefix before matching
+    const base = hostname.replace(/^www\./, "");
+    return BOT_PROTECTED_DOMAINS.has(base);
+  } catch {
+    return false;
+  }
+}
+
 router.post("/monitors", requireAuth, withUserClient, async (req, res) => {
   try {
     const {
@@ -121,9 +150,15 @@ router.post("/monitors", requireAuth, withUserClient, async (req, res) => {
       selector,
       interval_minutes = 5,
       last_value = null,
-      execution_mode = "agent",
       assigned_agent = process.env.DEFAULT_AGENT_ID || "home-pc",
     } = req.body;
+
+    // Default to "browser" for known bot-protected domains so the extension
+    // opens a real Chrome tab rather than dispatching to the headless agent.
+    // An explicit execution_mode in the request body always wins.
+    const execution_mode =
+      req.body.execution_mode ||
+      (isBotProtectedUrl(url) ? "browser" : "agent");
 
     if (!label || !url || !selector) {
       return res.status(400).json({ error: "label, url, and selector are required" });
