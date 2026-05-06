@@ -18,6 +18,76 @@
 
   // ── Selector Generation ─────────────────────────────────
 
+  function buildRelativePath(ancestor, el) {
+    if (!ancestor || !el || !ancestor.contains(el)) return null;
+    if (ancestor === el) return "";
+
+    const parts = [];
+    let current = el;
+    while (current && current !== ancestor) {
+      const tag = current.tagName.toLowerCase();
+      const parent = current.parentElement;
+      if (!parent) return null;
+
+      const siblings = Array.from(parent.children).filter(
+        (s) => s.tagName === current.tagName
+      );
+
+      if (siblings.length > 1) {
+        const idx = siblings.indexOf(current) + 1;
+        parts.unshift(`${tag}:nth-of-type(${idx})`);
+      } else {
+        parts.unshift(tag);
+      }
+
+      current = parent;
+    }
+
+    return parts.join(" > ");
+  }
+
+  function getUniqueClassSelector(node) {
+    if (!node || node.classList.length === 0) return null;
+
+    for (const cls of node.classList) {
+      const sel = `.${CSS.escape(cls)}`;
+      if (document.querySelectorAll(sel).length === 1) {
+        return sel;
+      }
+    }
+
+    const fullClass = Array.from(node.classList)
+      .map((c) => `.${CSS.escape(c)}`)
+      .join("");
+    if (fullClass && document.querySelectorAll(fullClass).length === 1) {
+      return fullClass;
+    }
+
+    return null;
+  }
+
+  function findAnchorById(el) {
+    let current = el.parentElement;
+    while (current && current !== document.documentElement) {
+      if (current.id) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+    return null;
+  }
+
+  function findAnchorByClass(el) {
+    let current = el.parentElement;
+    while (current && current !== document.documentElement) {
+      if (getUniqueClassSelector(current)) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+    return null;
+  }
+
   function generateSelector(el) {
     // Strategy 1: unique ID
     if (el.id) {
@@ -25,48 +95,36 @@
     }
 
     // Strategy 2: unique class combination
-    if (el.classList.length > 0) {
-      for (const cls of el.classList) {
-        const sel = `.${CSS.escape(cls)}`;
-        if (document.querySelectorAll(sel).length === 1) {
-          return sel;
-        }
+    const ownClassSelector = getUniqueClassSelector(el);
+    if (ownClassSelector) {
+      return ownClassSelector;
+    }
+
+    // Strategy 3a: anchor from closest ancestor id
+    const idAnchor = findAnchorById(el);
+    if (idAnchor) {
+      const path = buildRelativePath(idAnchor, el);
+      if (path) {
+        return `#${CSS.escape(idAnchor.id)} > ${path}`;
       }
-      // Try full class list
-      const fullClass = Array.from(el.classList)
-        .map((c) => `.${CSS.escape(c)}`)
-        .join("");
-      if (document.querySelectorAll(fullClass).length === 1) {
-        return fullClass;
+      return `#${CSS.escape(idAnchor.id)}`;
+    }
+
+    // Strategy 3b: anchor from closest ancestor unique class
+    const classAnchor = findAnchorByClass(el);
+    if (classAnchor) {
+      const anchorSel = getUniqueClassSelector(classAnchor);
+      const path = buildRelativePath(classAnchor, el);
+      if (anchorSel && path) {
+        return `${anchorSel} > ${path}`;
+      }
+      if (anchorSel) {
+        return anchorSel;
       }
     }
 
-    // Strategy 3: DOM path with :nth-of-type
-    const parts = [];
-    let current = el;
-    while (
-      current &&
-      current !== document.body &&
-      current !== document.documentElement
-    ) {
-      const tag = current.tagName.toLowerCase();
-      const parent = current.parentElement;
-      if (parent) {
-        const siblings = Array.from(parent.children).filter(
-          (s) => s.tagName === current.tagName
-        );
-        if (siblings.length > 1) {
-          const idx = siblings.indexOf(current) + 1;
-          parts.unshift(`${tag}:nth-of-type(${idx})`);
-        } else {
-          parts.unshift(tag);
-        }
-      } else {
-        parts.unshift(tag);
-      }
-      current = parent;
-    }
-    return `body > ${parts.join(" > ")}`;
+    // Strategy 3c: no stable selector found
+    return null;
   }
 
   // ── Value Extraction ────────────────────────────────────
@@ -340,6 +398,8 @@
       : "My Monitor";
     const intervalDefault = "15";
 
+    const hasStableSelector = Boolean(data.selector);
+
     host.innerHTML = `
       <div style="background:#1a1a2e;border:1px solid rgba(99,102,241,0.4);border-radius:14px;padding:14px;color:#e2e8f0;box-shadow:0 12px 36px rgba(0,0,0,0.55),0 0 0 1px rgba(99,102,241,0.18);animation:__pcm-fadeIn 0.2s ease;">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
@@ -351,7 +411,7 @@
           <div style="font-size:12px;color:#94a3b8;">Page</div>
           <div style="font-size:12px;color:#e2e8f0;">${esc(truncate(data.pageTitle, 50))}</div>
           <div style="font-size:12px;color:#94a3b8;">Selector</div>
-          <div style="font-size:11px;font-family:monospace;color:#cbd5e1;background:rgba(15,23,42,0.65);padding:6px;border-radius:6px;">${esc(truncate(data.selector, 80))}</div>
+          <div style="font-size:11px;font-family:monospace;color:#cbd5e1;background:rgba(15,23,42,0.65);padding:6px;border-radius:6px;">${esc(truncate(data.selector || "No stable selector found", 80))}</div>
           <div style="font-size:12px;color:#94a3b8;">Current value</div>
           <div style="font-size:12px;color:#a5b4fc;background:rgba(30,41,59,0.65);padding:6px;border-radius:6px;">${esc(truncate(data.value, 70))}</div>
         </div>
@@ -371,9 +431,16 @@
           </select>
         </div>
         <div id="__pcm-save-error" style="display:none;margin-bottom:10px;color:#fca5a5;font-size:12px;"></div>
+        ${
+          hasStableSelector
+            ? ""
+            : '<div style="margin-bottom:10px;color:#fca5a5;font-size:12px;">No stable selector found for this element. Try clicking a parent element with an id or class.</div>'
+        }
         <div style="display:flex;gap:8px;">
           <button id="__pcm-save-cancel" type="button" style="flex:1;height:34px;border:1px solid #334155;border-radius:8px;background:transparent;color:#cbd5e1;cursor:pointer;">Cancel</button>
-          <button id="__pcm-save-submit" type="button" style="flex:1;height:34px;border:0;border-radius:8px;background:#6366f1;color:#fff;font-weight:600;cursor:pointer;">Start Monitoring</button>
+          <button id="__pcm-save-submit" type="button" style="flex:1;height:34px;border:0;border-radius:8px;background:#6366f1;color:#fff;font-weight:600;cursor:pointer;" ${
+            hasStableSelector ? "" : "disabled"
+          }>Start Monitoring</button>
         </div>
       </div>
     `;
@@ -391,6 +458,13 @@
     }
 
     async function save() {
+      if (!hasStableSelector) {
+        errorEl.style.display = "block";
+        errorEl.textContent =
+          "No stable selector found for this element. Try a parent with an id or class.";
+        return;
+      }
+
       const label = String(labelInput?.value || "").trim();
       const interval = parseInt(
         String(intervalInput?.value || intervalDefault),
