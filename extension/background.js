@@ -14,7 +14,11 @@ function normalizeBackendUrl(url) {
 }
 
 async function getBackendUrl() {
-  const raw = C.BACKEND_URL_HOSTED || C.BACKEND_URL || C.Backend_URL || "http://127.0.0.1:3579";
+  const raw =
+    C.BACKEND_URL_HOSTED ||
+    C.BACKEND_URL ||
+    C.Backend_URL ||
+    "http://127.0.0.1:3579";
   return normalizeBackendUrl(raw);
 }
 
@@ -76,7 +80,12 @@ async function supabaseAuthFetch(path, body, extraHeaders = {}) {
   });
   const json = await resp.json().catch(() => ({}));
   if (!resp.ok) {
-    const msg = json.error_description || json.msg || json.message || json.error || resp.statusText;
+    const msg =
+      json.error_description ||
+      json.msg ||
+      json.message ||
+      json.error ||
+      resp.statusText;
     throw new Error(msg || "Auth request failed");
   }
   return json;
@@ -197,7 +206,10 @@ async function executeBrowserCheck(monitor) {
 
     console.log(`[bg] Browser check completed for monitor ${monitor.id}`);
   } catch (err) {
-    console.error(`[bg] Browser check failed for monitor ${monitor.id}:`, err.message);
+    console.error(
+      `[bg] Browser check failed for monitor ${monitor.id}:`,
+      err.message
+    );
     try {
       await apiFetch(`/monitors/${monitor.id}/browser-result`, {
         method: "POST",
@@ -222,7 +234,8 @@ async function handleAlertPolling() {
 
     if (!alerts.length) return;
 
-    const { unreadAlerts = [] } = await chrome.storage.local.get("unreadAlerts");
+    const { unreadAlerts = [] } =
+      await chrome.storage.local.get("unreadAlerts");
     const existingIds = new Set(unreadAlerts.map((a) => a.id));
     const newAlerts = alerts.filter((a) => !existingIds.has(a.id));
 
@@ -316,7 +329,8 @@ const messageHandlers = {
   },
 
   async GET_PENDING_ELEMENT() {
-    const { pendingElement = null } = await chrome.storage.session.get("pendingElement");
+    const { pendingElement = null } =
+      await chrome.storage.session.get("pendingElement");
     return pendingElement;
   },
 
@@ -327,7 +341,10 @@ const messageHandlers = {
   },
 
   async CLOSE_SAVE_PANEL_ACTIVE_TAB() {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [tab] = await chrome.tabs.query({
+      active: true,
+      currentWindow: true,
+    });
     if (!tab?.id) return { ok: true };
     await chrome.tabs
       .sendMessage(tab.id, {
@@ -338,7 +355,10 @@ const messageHandlers = {
   },
 
   async ACTIVATE_PICKER() {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [tab] = await chrome.tabs.query({
+      active: true,
+      currentWindow: true,
+    });
     if (!tab?.id) {
       return { error: "No active tab found" };
     }
@@ -416,7 +436,9 @@ const messageHandlers = {
     const access_token = hashParams.get("access_token");
     const refresh_token = hashParams.get("refresh_token");
     if (!access_token || !refresh_token) {
-      throw new Error("Google login did not return tokens (check Supabase redirect allowlist)");
+      throw new Error(
+        "Google login did not return tokens (check Supabase redirect allowlist)"
+      );
     }
 
     const session = sessionFromAuthResponse({
@@ -473,13 +495,17 @@ const messageHandlers = {
   },
 
   async GET_UNREAD_ALERTS() {
-    const { unreadAlerts = [] } = await chrome.storage.local.get("unreadAlerts");
+    const { unreadAlerts = [] } =
+      await chrome.storage.local.get("unreadAlerts");
     return unreadAlerts;
   },
 
   async DISMISS_ALERT(msg) {
-    const { unreadAlerts = [] } = await chrome.storage.local.get("unreadAlerts");
-    const filtered = unreadAlerts.filter((a) => String(a.id) !== String(msg.payload.id));
+    const { unreadAlerts = [] } =
+      await chrome.storage.local.get("unreadAlerts");
+    const filtered = unreadAlerts.filter(
+      (a) => String(a.id) !== String(msg.payload.id)
+    );
     await chrome.storage.local.set({ unreadAlerts: filtered });
     const count = filtered.length;
     chrome.action.setBadgeText({ text: count > 0 ? String(count) : "" });
@@ -495,7 +521,10 @@ const messageHandlers = {
 
 chrome.commands.onCommand.addListener(async (command) => {
   if (command === "activate-picker") {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [tab] = await chrome.tabs.query({
+      active: true,
+      currentWindow: true,
+    });
     if (tab?.id) {
       await chrome.tabs.sendMessage(tab.id, { type: "ACTIVATE_PICKER" });
     }

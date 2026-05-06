@@ -108,8 +108,8 @@ router.post("/monitors", requireAuth, withUserClient, async (req, res) => {
       selector,
       interval_minutes = 5,
       last_value = null,
-      execution_mode = "extension",
-      assigned_agent = null,
+      execution_mode = "agent",
+      assigned_agent = process.env.DEFAULT_AGENT_ID || "home-pc",
     } = req.body;
 
     if (!label || !url || !selector) {

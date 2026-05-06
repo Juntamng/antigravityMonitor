@@ -44,7 +44,11 @@
     // Strategy 3: DOM path with :nth-of-type
     const parts = [];
     let current = el;
-    while (current && current !== document.body && current !== document.documentElement) {
+    while (
+      current &&
+      current !== document.body &&
+      current !== document.documentElement
+    ) {
       const tag = current.tagName.toLowerCase();
       const parent = current.parentElement;
       if (parent) {
@@ -331,7 +335,9 @@
 
     document.body.appendChild(host);
 
-    const labelDefault = data.pageTitle ? data.pageTitle.slice(0, 40) : "My Monitor";
+    const labelDefault = data.pageTitle
+      ? data.pageTitle.slice(0, 40)
+      : "My Monitor";
     const intervalDefault = "15";
 
     host.innerHTML = `
@@ -385,7 +391,10 @@
 
     async function save() {
       const label = String(labelInput?.value || "").trim();
-      const interval = parseInt(String(intervalInput?.value || intervalDefault), 10);
+      const interval = parseInt(
+        String(intervalInput?.value || intervalDefault),
+        10
+      );
 
       if (!label) {
         errorEl.style.display = "block";
