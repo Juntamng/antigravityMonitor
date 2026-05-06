@@ -166,6 +166,38 @@ async function handleBrowserChecks() {
   }
 }
 
+/**
+ * Resolves once the given tab reaches status "complete", or after timeoutMs.
+ * Registers the onUpdated listener before checking current state to avoid
+ * the race where the tab completes between creation and listener registration.
+ */
+function waitForTabComplete(tabId, timeoutMs = 30000) {
+  return new Promise((resolve) => {
+    let settled = false;
+    function done() {
+      if (settled) return;
+      settled = true;
+      chrome.tabs.onUpdated.removeListener(listener);
+      clearTimeout(timer);
+      resolve();
+    }
+
+    function listener(id, changeInfo) {
+      if (id === tabId && changeInfo.status === "complete") done();
+    }
+
+    chrome.tabs.onUpdated.addListener(listener);
+
+    // Safety-net: timer resolves if the tab never fires "complete"
+    const timer = setTimeout(done, timeoutMs);
+
+    // Check whether the tab is already complete (handles fast loads)
+    chrome.tabs.get(tabId).then((tab) => {
+      if (tab?.status === "complete") done();
+    }).catch(done);
+  });
+}
+
 async function executeBrowserCheck(monitor) {
   let tabId = null;
   try {
@@ -175,24 +207,57 @@ async function executeBrowserCheck(monitor) {
     });
     tabId = tab.id;
 
-    await new Promise((r) => setTimeout(r, 5000));
+    // Wait for the tab's document to finish loading before injecting.
+    // A flat sleep is unreliable: sites like Home Depot render prices
+    // asynchronously via JS after the initial HTML has arrived.
+    await waitForTabComplete(tabId, 30000);
 
+    // Inject a polling function so dynamically-injected content (e.g. a price
+    // written to the DOM by React after an API call) is captured correctly.
+    // chrome.scripting.executeScript awaits a returned Promise in MV3.
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: (selector) => {
-        const el = document.querySelector(selector);
-        if (!el) return { error: "Element not found" };
-        if (
-          el.tagName === "INPUT" ||
-          el.tagName === "TEXTAREA" ||
-          el.tagName === "SELECT"
-        ) {
-          return { value: (el.value || "").trim() };
-        }
-        if (el.hasAttribute("content")) {
-          return { value: (el.getAttribute("content") || "").trim() };
-        }
-        return { value: (el.innerText || "").trim() };
+        const POLL_MS = 500;
+        const TIMEOUT_MS = 25000;
+
+        return new Promise((resolve) => {
+          const deadline = Date.now() + TIMEOUT_MS;
+
+          function attempt() {
+            const el = document.querySelector(selector);
+            if (el) {
+              let value;
+              if (
+                el.tagName === "INPUT" ||
+                el.tagName === "TEXTAREA" ||
+                el.tagName === "SELECT"
+              ) {
+                value = (el.value || "").trim();
+              } else if (el.hasAttribute("content")) {
+                value = (el.getAttribute("content") || "").trim();
+              } else {
+                value = (el.innerText || "").trim();
+              }
+              // Only resolve when the element actually has content —
+              // an empty string means the price hasn't been injected yet.
+              if (value.length > 0) {
+                return resolve({ value });
+              }
+            }
+
+            if (Date.now() >= deadline) {
+              const msg = el
+                ? "Element found but still empty after timeout"
+                : "Element not found after timeout";
+              return resolve({ error: msg });
+            }
+
+            setTimeout(attempt, POLL_MS);
+          }
+
+          attempt();
+        });
       },
       args: [monitor.selector],
     });
