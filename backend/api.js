@@ -9,7 +9,19 @@ const { Router } = require("express");
 const { supabaseAdmin, supabaseForUser } = require("./supabase");
 const { requireAuth } = require("./auth");
 
+const DEBUG = process.env.DEBUG === "true" || process.env.DEBUG === "1";
+
+function dbg(...args) {
+  if (DEBUG) console.log("[DEBUG]", ...args);
+}
+
 const router = Router();
+
+/** Log every incoming request URL when DEBUG is enabled */
+router.use((req, _res, next) => {
+  dbg(`${req.method} ${req.originalUrl}`);
+  next();
+});
 
 /** Attach RLS-scoped Supabase client after auth */
 function withUserClient(req, res, next) {
@@ -94,6 +106,7 @@ router.get("/monitors", requireAuth, withUserClient, async (req, res) => {
 
     if (error) throw error;
     const withLast = await mergeLastChecked(sb, data || []);
+    dbg("GET /monitors dataset:", JSON.stringify(withLast, null, 2));
     res.json(withLast);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -398,6 +411,7 @@ router.get("/agent/tasks", requireAgent, async (req, res) => {
       .lte("next_check_at", now);
 
     if (error) throw error;
+    dbg(`GET /agent/tasks [agent=${agentId}] dataset:`, JSON.stringify(data, null, 2));
     res.json(data || []);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -426,6 +440,7 @@ router.post("/agent/result", requireAgent, async (req, res) => {
     if (monitor.assigned_agent !== req.agentId) {
       return res.status(403).json({ error: "Monitor not assigned to this agent" });
     }
+    dbg(`POST /agent/result monitor_id=${monitor_id} url=${monitor.url} value=${value} error=${checkError ?? null}`);
 
     const now = new Date().toISOString();
 
