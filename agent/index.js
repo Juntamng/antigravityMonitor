@@ -41,6 +41,12 @@ function sleep(ms) {
 
 async function main() {
   console.log(`[agent] Starting agent_id=${config.AGENT_ID}`);
+  if (config.DEBUG) {
+    console.log("[debug] SUPABASE_URL   :", config.SUPABASE_URL);
+    console.log("[debug] AGENT_ID       :", config.AGENT_ID);
+    console.log("[debug] POLL_INTERVAL  :", config.POLL_INTERVAL_MS, "ms");
+    console.log("[debug] HB_INTERVAL    :", config.HEARTBEAT_INTERVAL_MS, "ms");
+  }
   await upsertOnline(sb, config.AGENT_ID);
 
   await Promise.all([heartbeatLoop(), pollLoop()]);

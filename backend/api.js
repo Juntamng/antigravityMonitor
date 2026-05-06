@@ -192,7 +192,7 @@ router.post("/monitors/:id/check", requireAuth, withUserClient, async (req, res)
     if (monitor.execution_mode === "agent") {
       const { error: upErr } = await sb
         .from("monitors")
-        .update({ next_check_at: now })
+        .update({ next_check_at: now, pending_browser_check: true })
         .eq("id", id);
       if (upErr) throw upErr;
       return res.json({

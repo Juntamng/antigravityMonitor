@@ -4,6 +4,11 @@
 
 const { checkSelector } = require("./checker");
 const { reportSuccess, reportError } = require("./reporter");
+const { DEBUG } = require("./config");
+
+function dbg(...args) {
+  if (DEBUG) console.log("[debug]", ...args);
+}
 
 function addMinutesIso(iso, minutes) {
   const d = new Date(iso);
@@ -45,12 +50,16 @@ async function fetchDueMonitors(sb, agentId) {
     .lte("next_check_at", now);
 
   if (error) throw error;
-  return data || [];
+  const monitors = data || [];
+  dbg(`fetchDueMonitors agentId=${agentId} due=${monitors.length}`, monitors.map((m) => m.url));
+  return monitors;
 }
 
 async function processMonitor(sb, monitor) {
   const claimed = await claimMonitor(sb, monitor);
   if (!claimed) return;
+
+  dbg(`processing monitor id=${monitor.id} url=${monitor.url}`);
 
   try {
     const value = await checkSelector(monitor);

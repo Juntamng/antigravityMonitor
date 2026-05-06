@@ -6,6 +6,7 @@ const AGENT_ID = process.env.AGENT_ID || "default-agent";
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS) || 30_000;
 const HEARTBEAT_INTERVAL_MS =
   Number(process.env.HEARTBEAT_INTERVAL_MS) || 30_000;
+const DEBUG = process.env.DEBUG === "true" || process.env.DEBUG === "1";
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error(
@@ -20,4 +21,5 @@ module.exports = {
   AGENT_ID,
   POLL_INTERVAL_MS,
   HEARTBEAT_INTERVAL_MS,
+  DEBUG,
 };
