@@ -59,13 +59,40 @@ async function checkSelector(monitor) {
 
   try {
     await page.goto(monitor.url, {
-      waitUntil: "domcontentloaded",
+      waitUntil: "load",
       timeout: 30000,
     });
 
-    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      await page.waitForLoadState("networkidle", { timeout: 15000 });
+    } catch {
+      // Site uses persistent polling/websockets — proceed to selector wait anyway.
+    }
 
-    const el = await page.waitForSelector(monitor.selector, { timeout: 10000 });
+    await page.waitForFunction(
+      (sel) => {
+        const node = document.querySelector(sel);
+        if (!node) return false;
+        if (
+          node.tagName === "INPUT" ||
+          node.tagName === "TEXTAREA" ||
+          node.tagName === "SELECT"
+        ) {
+          return typeof node.value === "string" && node.value.trim().length > 0;
+        }
+        if (node.hasAttribute("content")) {
+          return (node.getAttribute("content") || "").trim().length > 0;
+        }
+        return (node.innerText || "").trim().length > 0;
+      },
+      monitor.selector,
+      { timeout: 20000, polling: 500 }
+    );
+
+    const el = await page.$(monitor.selector);
+    if (!el) {
+      throw new Error(`Selector not found after wait: ${monitor.selector}`);
+    }
 
     const value = await el.evaluate((node) => {
       if (
