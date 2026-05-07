@@ -127,12 +127,14 @@ async function refreshSessionIfNeeded() {
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create("browser-checks", { periodInMinutes: 1 });
+  chrome.alarms.create("extension-checks", { periodInMinutes: 1 });
   chrome.alarms.create("poll-alerts", { periodInMinutes: 0.5 });
   chrome.alarms.create("session-refresh", { periodInMinutes: 45 });
 });
 
 chrome.runtime.onStartup.addListener(() => {
   chrome.alarms.create("browser-checks", { periodInMinutes: 1 });
+  chrome.alarms.create("extension-checks", { periodInMinutes: 1 });
   chrome.alarms.create("poll-alerts", { periodInMinutes: 0.5 });
   chrome.alarms.create("session-refresh", { periodInMinutes: 45 });
 });
@@ -140,6 +142,8 @@ chrome.runtime.onStartup.addListener(() => {
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === "browser-checks") {
     await handleBrowserChecks();
+  } else if (alarm.name === "extension-checks") {
+    await handleScheduledExtensionChecks();
   } else if (alarm.name === "poll-alerts") {
     await handleAlertPolling();
   } else if (alarm.name === "session-refresh") {
@@ -163,6 +167,19 @@ async function handleBrowserChecks() {
   } catch (err) {
     if (err.message === "Not authenticated") return;
     console.log("[bg] Browser checks fetch failed:", err.message);
+  }
+}
+
+async function handleScheduledExtensionChecks() {
+  try {
+    await refreshSessionIfNeeded();
+    const monitors = await apiFetch("/monitors/due-extension-checks");
+    for (const monitor of monitors) {
+      await executeBrowserCheck(monitor);
+    }
+  } catch (err) {
+    if (err.message === "Not authenticated") return;
+    console.log("[bg] Extension checks fetch failed:", err.message);
   }
 }
 

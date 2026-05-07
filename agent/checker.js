@@ -5,6 +5,13 @@
 const { chromium } = require("playwright");
 const { CDP_URL, DEBUG } = require("./config");
 
+class BotChallengeError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "BotChallengeError";
+  }
+}
+
 /** @type {import('playwright').Browser|null} */
 let sharedBrowser = null;
 
@@ -78,7 +85,7 @@ async function getBrowser() {
  * Lowe's, etc.), Cloudflare, and generic "access denied" patterns.
  *
  * When this throws, the caller should surface the error and the user should
- * switch the monitor to execution_mode="browser" so the extension opens a
+ * switch the monitor to execution_mode="extension" so the extension opens a
  * real Chrome tab, which bypasses bot detection.
  */
 async function detectBotChallenge(page, url) {
@@ -111,23 +118,23 @@ async function detectBotChallenge(page, url) {
       (lower.includes("access denied") || lower.includes("captcha")));
 
   if (isAkamaiChallenge) {
-    throw new Error(
+    throw new BotChallengeError(
       `Bot-protection challenge detected on ${url} (Akamai Bot Manager). ` +
       `Headless browsers cannot pass this check. ` +
-      `Switch this monitor to execution_mode="browser" so the extension uses a real Chrome tab instead.`
+      `Switch this monitor to execution_mode="extension" so the extension uses a real Chrome tab instead.`
     );
   }
   if (isCloudflareCaptcha) {
-    throw new Error(
+    throw new BotChallengeError(
       `Cloudflare CAPTCHA detected on ${url}. ` +
-      `Switch this monitor to execution_mode="browser".`
+      `Switch this monitor to execution_mode="extension".`
     );
   }
   if (isAccessDenied) {
-    throw new Error(
+    throw new BotChallengeError(
       `Access denied on ${url} (title="${title}"). ` +
       `The site may be blocking automated requests. ` +
-      `Switch this monitor to execution_mode="browser".`
+      `Switch this monitor to execution_mode="extension".`
     );
   }
 }
@@ -252,4 +259,4 @@ async function checkSelector(monitor) {
   }
 }
 
-module.exports = { checkSelector };
+module.exports = { checkSelector, BotChallengeError };

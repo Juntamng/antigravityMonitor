@@ -488,11 +488,6 @@
         selector: data.selector,
         interval_minutes: interval,
         last_value: data.value || "",
-        // Always use browser-assisted checks when saving from the extension.
-        // Many major retail sites (Home Depot, Walmart, etc.) use Akamai Bot
-        // Manager, which blocks any headless browser. The extension opens a
-        // real Chrome tab that bypasses this protection entirely.
-        execution_mode: "browser",
       });
 
       if (resp?.error) {

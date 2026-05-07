@@ -2,8 +2,8 @@
  * poller.js — Fetch due monitors, optimistic lock, run checker, report
  */
 
-const { checkSelector } = require("./checker");
-const { reportSuccess, reportError } = require("./reporter");
+const { checkSelector, BotChallengeError } = require("./checker");
+const { reportSuccess, reportError, reportBotEscalation } = require("./reporter");
 const { DEBUG } = require("./config");
 
 function dbg(...args) {
@@ -66,6 +66,11 @@ async function processMonitor(sb, monitor) {
     await reportSuccess(sb, monitor, value);
     console.log(`[poller] OK monitor ${monitor.id} value=${value.slice(0, 80)}…`);
   } catch (err) {
+    if (err instanceof BotChallengeError) {
+      console.error(`[poller] BOT monitor ${monitor.id}:`, err.message);
+      await reportBotEscalation(sb, monitor, err.message);
+      return;
+    }
     console.error(`[poller] FAIL monitor ${monitor.id}:`, err.message);
     await reportError(sb, monitor, err.message);
   }

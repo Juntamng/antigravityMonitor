@@ -113,35 +113,6 @@ router.get("/monitors", requireAuth, withUserClient, async (req, res) => {
   }
 });
 
-/**
- * Major retail / e-commerce sites that use Akamai Bot Manager or similar
- * multi-layer bot protection. Headless browsers are reliably blocked on these
- * domains; only a real Chrome tab opened by the extension can pass through.
- * Monitors for these URLs must use execution_mode="browser".
- */
-const BOT_PROTECTED_DOMAINS = new Set([
-  "homedepot.com",
-  "walmart.com",
-  "target.com",
-  "bestbuy.com",
-  "lowes.com",
-  "costco.com",
-  "macys.com",
-  "kohls.com",
-  "newegg.com",
-]);
-
-function isBotProtectedUrl(rawUrl) {
-  try {
-    const { hostname } = new URL(rawUrl);
-    // Strip www. / subdomain prefix before matching
-    const base = hostname.replace(/^www\./, "");
-    return BOT_PROTECTED_DOMAINS.has(base);
-  } catch {
-    return false;
-  }
-}
-
 router.post("/monitors", requireAuth, withUserClient, async (req, res) => {
   try {
     const {
@@ -153,12 +124,8 @@ router.post("/monitors", requireAuth, withUserClient, async (req, res) => {
       assigned_agent = process.env.DEFAULT_AGENT_ID || "home-pc",
     } = req.body;
 
-    // Default to "browser" for known bot-protected domains so the extension
-    // opens a real Chrome tab rather than dispatching to the headless agent.
-    // An explicit execution_mode in the request body always wins.
-    const execution_mode =
-      req.body.execution_mode ||
-      (isBotProtectedUrl(url) ? "browser" : "agent");
+    // Monitors default to the headless agent path unless explicitly overridden.
+    const execution_mode = req.body.execution_mode || "agent";
 
     if (!label || !url || !selector) {
       return res.status(400).json({ error: "label, url, and selector are required" });
@@ -269,6 +236,24 @@ router.get("/monitors/pending-browser-checks", requireAuth, withUserClient, asyn
   }
 });
 
+router.get("/monitors/due-extension-checks", requireAuth, withUserClient, async (req, res) => {
+  try {
+    const sb = req.supabaseUser;
+    const now = new Date().toISOString();
+    const { data, error } = await sb
+      .from("monitors")
+      .select("id, label, url, selector")
+      .eq("active", true)
+      .eq("execution_mode", "extension")
+      .lte("next_check_at", now);
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post("/monitors/:id/browser-result", requireAuth, withUserClient, async (req, res) => {
   try {
     const id = req.params.id;
@@ -281,16 +266,6 @@ router.post("/monitors/:id/browser-result", requireAuth, withUserClient, async (
       .eq("id", id);
     if (clearErr) throw clearErr;
 
-    if (bodyError) {
-      const { error: histErr } = await sb.from("history").insert({
-        monitor_id: id,
-        value: null,
-        error: bodyError,
-      });
-      if (histErr) throw histErr;
-      return res.json({ ok: true, error: bodyError });
-    }
-
     const { data: monitor, error: monErr } = await sb
       .from("monitors")
       .select("*")
@@ -299,6 +274,22 @@ router.post("/monitors/:id/browser-result", requireAuth, withUserClient, async (
     if (monErr) throw monErr;
     if (!monitor) {
       return res.status(404).json({ error: "Monitor not found" });
+    }
+    const nextAt = addMinutesIso(new Date().toISOString(), monitor.interval_minutes);
+
+    if (bodyError) {
+      const { error: histErr } = await sb.from("history").insert({
+        monitor_id: id,
+        value: null,
+        error: bodyError,
+      });
+      if (histErr) throw histErr;
+      const { error: upErr } = await sb
+        .from("monitors")
+        .update({ pending_browser_check: false, next_check_at: nextAt })
+        .eq("id", id);
+      if (upErr) throw upErr;
+      return res.json({ ok: true, error: bodyError });
     }
 
     const { error: histErr } = await sb.from("history").insert({
@@ -320,7 +311,6 @@ router.post("/monitors/:id/browser-result", requireAuth, withUserClient, async (
       if (alertErr) throw alertErr;
     }
 
-    const nextAt = addMinutesIso(new Date().toISOString(), monitor.interval_minutes);
     const { error: upErr } = await sb
       .from("monitors")
       .update({

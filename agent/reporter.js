@@ -60,4 +60,18 @@ async function reportError(sb, monitor, errMessage) {
   if (uErr) throw uErr;
 }
 
-module.exports = { reportSuccess, reportError };
+async function reportBotEscalation(sb, monitor, errMessage) {
+  const now = new Date().toISOString();
+  await insertHistory(sb, monitor.id, null, errMessage);
+  const { error: uErr } = await sb
+    .from("monitors")
+    .update({
+      execution_mode: "extension",
+      pending_browser_check: false,
+      next_check_at: now,
+    })
+    .eq("id", monitor.id);
+  if (uErr) throw uErr;
+}
+
+module.exports = { reportSuccess, reportError, reportBotEscalation };
