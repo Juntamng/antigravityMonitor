@@ -296,13 +296,14 @@
   async function handleCheckNow(e) {
     const btn = e.currentTarget;
     const id = btn.dataset.id;
+    const monitor = monitors.find((m) => String(m.id) === String(id));
     const originalText = btn.innerHTML;
 
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span>';
 
     try {
-      const result = await sendMsg("CHECK_MONITOR", { id });
+      const result = await sendMsg("CHECK_MONITOR", monitor);
 
       if (result?.error) {
         btn.innerHTML = "❌ Error";

@@ -217,6 +217,7 @@ function waitForTabComplete(tabId, timeoutMs = 30000) {
 
 async function executeBrowserCheck(monitor) {
   let tabId = null;
+  let checkResult = null;
   try {
     const tab = await chrome.tabs.create({
       url: monitor.url,
@@ -281,7 +282,7 @@ async function executeBrowserCheck(monitor) {
 
     const result = results?.[0]?.result || { error: "No result" };
 
-    await apiFetch(`/monitors/${monitor.id}/browser-result`, {
+    checkResult = await apiFetch(`/monitors/${monitor.id}/browser-result`, {
       method: "POST",
       body: JSON.stringify(result),
     });
@@ -293,18 +294,19 @@ async function executeBrowserCheck(monitor) {
       err.message
     );
     try {
-      await apiFetch(`/monitors/${monitor.id}/browser-result`, {
+      checkResult = await apiFetch(`/monitors/${monitor.id}/browser-result`, {
         method: "POST",
         body: JSON.stringify({ error: err.message }),
       });
-    } catch {
-      /* unreachable */
+    } catch (resultErr) {
+      checkResult = { error: resultErr.message || err.message };
     }
   } finally {
     if (tabId) {
       chrome.tabs.remove(tabId).catch(() => {});
     }
   }
+  return checkResult || { ok: true };
 }
 
 // ── Alert Polling ─────────────────────────────────────────
@@ -569,7 +571,17 @@ const messageHandlers = {
   },
 
   async CHECK_MONITOR(msg) {
-    return apiFetch(`/monitors/${msg.payload.id}/check`, { method: "POST" });
+    const monitor = msg.payload;
+    if (!monitor?.id) {
+      return { error: "Invalid monitor" };
+    }
+
+    // Extension monitors run immediately in a real tab for instant feedback.
+    if (monitor.execution_mode === "extension") {
+      return executeBrowserCheck(monitor);
+    }
+
+    return apiFetch(`/monitors/${monitor.id}/check`, { method: "POST" });
   },
 
   async GET_HISTORY(msg) {
