@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — Page Change Monitor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 16px;
+      line-height: 1.7;
+      color: #1a1a1a;
+      background: #fff;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 48px 24px 96px;
+    }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin-top: 40px; margin-bottom: 12px; color: #111; }
+    p  { margin-bottom: 14px; color: #333; }
+    ul { margin: 0 0 14px 20px; color: #333; }
+    li { margin-bottom: 6px; }
+    .meta { font-size: 0.9rem; color: #666; margin-bottom: 40px; }
+    a  { color: #4f46e5; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    hr { border: none; border-top: 1px solid #e5e7eb; margin: 40px 0; }
+  </style>
+</head>
+<body>
+
+  <h1>Privacy Policy</h1>
+  <p class="meta">Applies to: <strong>Page Change Monitor</strong> Chrome Extension &nbsp;·&nbsp; Last updated: May 9, 2025</p>
+
+  <p>
+    Page Change Monitor ("the Extension") is a Chrome browser extension that monitors user-selected
+    webpage elements for content changes and delivers desktop notifications when a change is detected.
+    This policy explains what data the Extension collects, how it is used, and your rights.
+  </p>
+
+  <h2>1. Data We Collect</h2>
+
+  <p>The Extension collects only what is necessary to provide the monitoring service:</p>
+
+  <ul>
+    <li>
+      <strong>Email address</strong> — collected when you sign in with Google via Supabase OAuth.
+      Used solely to identify your account.
+    </li>
+    <li>
+      <strong>Authentication tokens</strong> — an access token and refresh token issued by Supabase
+      after sign-in. Stored locally in <code>chrome.storage.local</code> on your device and sent
+      only to Supabase (to refresh the session) and the Extension's own backend API
+      (antigravitymonitor.onrender.com) to authenticate your requests.
+    </li>
+    <li>
+      <strong>Monitor configuration</strong> — the URL, CSS selector, label, and check interval
+      you configure for each monitor. Stored in the Extension's backend database so your monitors
+      persist across devices and browser restarts.
+    </li>
+    <li>
+      <strong>Element values</strong> — the text content of the webpage elements you choose to
+      monitor. Captured during each check and sent to the backend solely to detect changes and
+      trigger alerts. Historical values are retained so you can review change history.
+    </li>
+  </ul>
+
+  <h2>2. Data We Do Not Collect</h2>
+
+  <ul>
+    <li>Browsing history</li>
+    <li>Keystrokes or form input</li>
+    <li>Personal communications</li>
+    <li>Financial or payment information</li>
+    <li>Health information</li>
+    <li>Precise geolocation</li>
+    <li>Any data from pages you have not explicitly added as a monitor</li>
+  </ul>
+
+  <h2>3. How We Use Your Data</h2>
+
+  <p>Your data is used exclusively to operate the Extension:</p>
+  <ul>
+    <li>Authenticating you and maintaining your session</li>
+    <li>Storing and executing your monitor configurations</li>
+    <li>Comparing element values over time to detect changes</li>
+    <li>Delivering change notifications to your browser</li>
+  </ul>
+
+  <p>We do not use your data for advertising, profiling, or any purpose unrelated to the monitoring service.</p>
+
+  <h2>4. Data Sharing</h2>
+
+  <p>We do not sell, rent, or share your personal data with third parties, except:</p>
+  <ul>
+    <li>
+      <strong>Supabase</strong> — our authentication and database provider. Data is stored in
+      Supabase's managed infrastructure. See
+      <a href="https://supabase.com/privacy" target="_blank" rel="noopener">Supabase's Privacy Policy</a>.
+    </li>
+    <li>
+      <strong>Legal requirements</strong> — if required by law or to protect the rights and safety
+      of users or the public.
+    </li>
+  </ul>
+
+  <h2>5. Data Storage and Security</h2>
+
+  <p>
+    Authentication tokens are stored locally on your device using Chrome's
+    <code>chrome.storage.local</code> API and are never accessible to other extensions or websites.
+    Monitor data is stored in Supabase with row-level security, ensuring each user can only access
+    their own data. All communication between the Extension and the backend uses HTTPS.
+  </p>
+
+  <h2>6. Data Retention</h2>
+
+  <p>
+    Your monitor configurations and change history are retained for as long as your account is active.
+    You can delete individual monitors at any time from within the Extension. To request full account
+    deletion, contact us at the email below.
+  </p>
+
+  <h2>7. Your Rights</h2>
+
+  <p>You have the right to:</p>
+  <ul>
+    <li>Access the data associated with your account</li>
+    <li>Delete your monitors and change history at any time</li>
+    <li>Request full deletion of your account and all associated data</li>
+    <li>Sign out at any time, which removes your session tokens from the device</li>
+  </ul>
+
+  <h2>8. Children's Privacy</h2>
+
+  <p>
+    The Extension is not directed at children under 13. We do not knowingly collect personal
+    information from children.
+  </p>
+
+  <h2>9. Changes to This Policy</h2>
+
+  <p>
+    We may update this policy from time to time. The "Last updated" date at the top of this page
+    will reflect any changes. Continued use of the Extension after changes constitutes acceptance
+    of the updated policy.
+  </p>
+
+  <h2>10. Contact</h2>
+
+  <p>
+    For questions, data requests, or account deletion, contact us at:<br />
+    <a href="mailto:your@email.com">your@email.com</a>
+  </p>
+
+  <hr />
+  <p style="font-size:0.85rem; color:#999;">Page Change Monitor is an independent product. It is not affiliated with Google LLC.</p>
+
+</body>
+</html>
