@@ -8,6 +8,70 @@
 importScripts("config.js");
 
 const C = self.PAGE_MONITOR_CONFIG;
+const MONITOR_TAB_STORAGE_KEY = "reusableMonitorTabId";
+const IDLE_MONITOR_TAB_URL = chrome.runtime.getURL("monitor-tab.html");
+let reusableMonitorTabId = null;
+let monitorTabLock = Promise.resolve();
+
+chrome.storage.session.get(MONITOR_TAB_STORAGE_KEY).then((stored) => {
+  const id = stored?.[MONITOR_TAB_STORAGE_KEY];
+  if (typeof id === "number") reusableMonitorTabId = id;
+});
+
+async function setReusableMonitorTabId(tabId) {
+  reusableMonitorTabId = tabId ?? null;
+  if (reusableMonitorTabId == null) {
+    await chrome.storage.session.remove(MONITOR_TAB_STORAGE_KEY);
+  } else {
+    await chrome.storage.session.set({
+      [MONITOR_TAB_STORAGE_KEY]: reusableMonitorTabId,
+    });
+  }
+}
+
+function isIdleMonitorTab(tab) {
+  const url = tab.url || tab.pendingUrl || "";
+  return url === IDLE_MONITOR_TAB_URL || url === "about:blank";
+}
+
+/** Resolve tab id from memory, session storage, or an existing pinned idle tab. */
+async function resolveReusableMonitorTabId() {
+  const candidateIds = [];
+  if (reusableMonitorTabId != null) candidateIds.push(reusableMonitorTabId);
+  const stored = await chrome.storage.session.get(MONITOR_TAB_STORAGE_KEY);
+  const storedId = stored?.[MONITOR_TAB_STORAGE_KEY];
+  if (storedId != null && !candidateIds.includes(storedId)) {
+    candidateIds.push(storedId);
+  }
+
+  for (const id of candidateIds) {
+    try {
+      const tab = await chrome.tabs.get(id);
+      if (tab?.id) {
+        await setReusableMonitorTabId(tab.id);
+        return tab.id;
+      }
+    } catch {
+      /* tab gone */
+    }
+  }
+
+  const pinnedTabs = await chrome.tabs.query({ pinned: true });
+  const idleTabs = pinnedTabs.filter(isIdleMonitorTab);
+  if (idleTabs.length === 0) return null;
+
+  idleTabs.sort((a, b) => a.id - b.id);
+  const keep = idleTabs[0];
+  for (let i = 1; i < idleTabs.length; i++) {
+    try {
+      await chrome.tabs.remove(idleTabs[i].id);
+    } catch {
+      /* already closed */
+    }
+  }
+  await setReusableMonitorTabId(keep.id);
+  return keep.id;
+}
 
 function normalizeBackendUrl(url) {
   return String(url || "").replace(/\/$/, "");
@@ -215,104 +279,156 @@ function waitForTabComplete(tabId, timeoutMs = 30000) {
   });
 }
 
+function withMonitorTabLock(task) {
+  const run = monitorTabLock.then(task, task);
+  monitorTabLock = run.catch(() => {});
+  return run;
+}
+
+async function getOrCreateReusableMonitorTab(url) {
+  const existingId = await resolveReusableMonitorTabId();
+  if (existingId) {
+    try {
+      await chrome.tabs.update(existingId, {
+        url,
+        active: false,
+        pinned: true,
+      });
+      await chrome.tabs.move(existingId, { index: 0 });
+      await setReusableMonitorTabId(existingId);
+      return existingId;
+    } catch {
+      await setReusableMonitorTabId(null);
+    }
+  }
+
+  const tab = await chrome.tabs.create({
+    url,
+    active: false,
+    pinned: true,
+    index: 0,
+  });
+  await setReusableMonitorTabId(tab.id || null);
+  return reusableMonitorTabId;
+}
+
+async function resetReusableMonitorTabToBlank(tabId) {
+  if (!tabId) return;
+  try {
+    await chrome.tabs.update(tabId, {
+      url: IDLE_MONITOR_TAB_URL,
+      active: false,
+      pinned: true,
+    });
+    await chrome.tabs.move(tabId, { index: 0 });
+    await setReusableMonitorTabId(tabId);
+  } catch {
+    if (tabId === reusableMonitorTabId) {
+      await setReusableMonitorTabId(null);
+    }
+  }
+}
+
 async function executeBrowserCheck(monitor, options = {}) {
   const { historyOnly = false } = options;
   const resultPath = historyOnly
     ? `/monitors/${monitor.id}/manual-check-result`
     : `/monitors/${monitor.id}/browser-result`;
 
-  let tabId = null;
-  let checkResult = null;
-  try {
-    const tab = await chrome.tabs.create({
-      url: monitor.url,
-      active: false,
-    });
-    tabId = tab.id;
-
-    // Wait for the tab's document to finish loading before injecting.
-    // A flat sleep is unreliable: sites like Home Depot render prices
-    // asynchronously via JS after the initial HTML has arrived.
-    await waitForTabComplete(tabId, 30000);
-
-    // Inject a polling function so dynamically-injected content (e.g. a price
-    // written to the DOM by React after an API call) is captured correctly.
-    // chrome.scripting.executeScript awaits a returned Promise in MV3.
-    const results = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: (selector) => {
-        const POLL_MS = 500;
-        const TIMEOUT_MS = 25000;
-
-        return new Promise((resolve) => {
-          const deadline = Date.now() + TIMEOUT_MS;
-
-          function attempt() {
-            const el = document.querySelector(selector);
-            if (el) {
-              let value;
-              if (
-                el.tagName === "INPUT" ||
-                el.tagName === "TEXTAREA" ||
-                el.tagName === "SELECT"
-              ) {
-                value = (el.value || "").trim();
-              } else if (el.hasAttribute("content")) {
-                value = (el.getAttribute("content") || "").trim();
-              } else {
-                value = (el.innerText || "").trim();
-              }
-              // Only resolve when the element actually has content —
-              // an empty string means the price hasn't been injected yet.
-              if (value.length > 0) {
-                return resolve({ value });
-              }
-            }
-
-            if (Date.now() >= deadline) {
-              const msg = el
-                ? "Element found but still empty after timeout"
-                : "Element not found after timeout";
-              return resolve({ error: msg });
-            }
-
-            setTimeout(attempt, POLL_MS);
-          }
-
-          attempt();
-        });
-      },
-      args: [monitor.selector],
-    });
-
-    const result = results?.[0]?.result || { error: "No result" };
-
-    checkResult = await apiFetch(resultPath, {
-      method: "POST",
-      body: JSON.stringify(result),
-    });
-
-    console.log(`[bg] Browser check completed for monitor ${monitor.id}`);
-  } catch (err) {
-    console.error(
-      `[bg] Browser check failed for monitor ${monitor.id}:`,
-      err.message
-    );
+  return withMonitorTabLock(async () => {
+    let tabId = null;
+    let checkResult = null;
     try {
+      tabId = await getOrCreateReusableMonitorTab(monitor.url);
+      if (!tabId) throw new Error("Failed to initialize reusable monitor tab");
+
+      // Wait for the tab's document to finish loading before injecting.
+      // A flat sleep is unreliable: many sites render monitored values asynchronously.
+      await waitForTabComplete(tabId, 30000);
+
+      // Inject a polling function so dynamically-injected content (e.g. a price
+      // written to the DOM by React after an API call) is captured correctly.
+      // chrome.scripting.executeScript awaits a returned Promise in MV3.
+      const results = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (selector) => {
+          const POLL_MS = 500;
+          const TIMEOUT_MS = 25000;
+
+          return new Promise((resolve) => {
+            const deadline = Date.now() + TIMEOUT_MS;
+
+            function attempt() {
+              const el = document.querySelector(selector);
+              if (el) {
+                let value;
+                if (
+                  el.tagName === "INPUT" ||
+                  el.tagName === "TEXTAREA" ||
+                  el.tagName === "SELECT"
+                ) {
+                  value = (el.value || "").trim();
+                } else if (el.hasAttribute("content")) {
+                  value = (el.getAttribute("content") || "").trim();
+                } else {
+                  value = (el.innerText || "").trim();
+                }
+                // Only resolve when the element actually has content —
+                // an empty string means the value hasn't been injected yet.
+                if (value.length > 0) {
+                  return resolve({ value });
+                }
+              }
+
+              if (Date.now() >= deadline) {
+                const msg = el
+                  ? "Element found but still empty after timeout"
+                  : "Element not found after timeout";
+                return resolve({ error: msg });
+              }
+
+              setTimeout(attempt, POLL_MS);
+            }
+
+            attempt();
+          });
+        },
+        args: [monitor.selector],
+      });
+
+      const result = results?.[0]?.result || { error: "No result" };
+
       checkResult = await apiFetch(resultPath, {
         method: "POST",
-        body: JSON.stringify({ error: err.message }),
+        body: JSON.stringify(result),
       });
-    } catch (resultErr) {
-      checkResult = { error: resultErr.message || err.message };
+
+      console.log(`[bg] Browser check completed for monitor ${monitor.id}`);
+    } catch (err) {
+      console.error(
+        `[bg] Browser check failed for monitor ${monitor.id}:`,
+        err.message
+      );
+      try {
+        checkResult = await apiFetch(resultPath, {
+          method: "POST",
+          body: JSON.stringify({ error: err.message }),
+        });
+      } catch (resultErr) {
+        checkResult = { error: resultErr.message || err.message };
+      }
+    } finally {
+      await resetReusableMonitorTabToBlank(tabId);
     }
-  } finally {
-    if (tabId) {
-      chrome.tabs.remove(tabId).catch(() => {});
-    }
-  }
-  return checkResult || { ok: true };
+    return checkResult || { ok: true };
+  });
 }
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (tabId === reusableMonitorTabId) {
+    void setReusableMonitorTabId(null);
+  }
+});
 
 // ── Alert Polling ─────────────────────────────────────────
 
