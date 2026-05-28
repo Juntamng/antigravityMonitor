@@ -170,8 +170,8 @@ router.delete("/monitors/:id", requireAuth, withUserClient, async (req, res) => 
 });
 
 /**
- * "Check now": no Playwright on server. Extension monitors → pending_browser_check;
- * agent monitors → bump next_check_at to now.
+ * Legacy queue path (popup uses immediate browser + manual-check-result instead).
+ * Extension monitors → pending_browser_check; agent monitors → next_check_at + pending flag.
  */
 router.post("/monitors/:id/check", requireAuth, withUserClient, async (req, res) => {
   try {
@@ -249,6 +249,39 @@ router.get("/monitors/due-extension-checks", requireAuth, withUserClient, async 
 
     if (error) throw error;
     res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/monitors/:id/manual-check-result", requireAuth, withUserClient, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { value, error: bodyError } = req.body;
+    const sb = req.supabaseUser;
+
+    const { data: monitor, error: monErr } = await sb
+      .from("monitors")
+      .select("id")
+      .eq("id", id)
+      .eq("active", true)
+      .maybeSingle();
+    if (monErr) throw monErr;
+    if (!monitor) {
+      return res.status(404).json({ error: "Monitor not found" });
+    }
+
+    const { error: histErr } = await sb.from("history").insert({
+      monitor_id: id,
+      value: bodyError ? null : value ?? null,
+      error: bodyError ?? null,
+    });
+    if (histErr) throw histErr;
+
+    if (bodyError) {
+      return res.json({ ok: true, error: bodyError });
+    }
+    res.json({ ok: true, value });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

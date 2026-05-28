@@ -215,7 +215,12 @@ function waitForTabComplete(tabId, timeoutMs = 30000) {
   });
 }
 
-async function executeBrowserCheck(monitor) {
+async function executeBrowserCheck(monitor, options = {}) {
+  const { historyOnly = false } = options;
+  const resultPath = historyOnly
+    ? `/monitors/${monitor.id}/manual-check-result`
+    : `/monitors/${monitor.id}/browser-result`;
+
   let tabId = null;
   let checkResult = null;
   try {
@@ -282,7 +287,7 @@ async function executeBrowserCheck(monitor) {
 
     const result = results?.[0]?.result || { error: "No result" };
 
-    checkResult = await apiFetch(`/monitors/${monitor.id}/browser-result`, {
+    checkResult = await apiFetch(resultPath, {
       method: "POST",
       body: JSON.stringify(result),
     });
@@ -294,7 +299,7 @@ async function executeBrowserCheck(monitor) {
       err.message
     );
     try {
-      checkResult = await apiFetch(`/monitors/${monitor.id}/browser-result`, {
+      checkResult = await apiFetch(resultPath, {
         method: "POST",
         body: JSON.stringify({ error: err.message }),
       });
@@ -576,12 +581,7 @@ const messageHandlers = {
       return { error: "Invalid monitor" };
     }
 
-    // Extension monitors run immediately in a real tab for instant feedback.
-    if (monitor.execution_mode === "extension") {
-      return executeBrowserCheck(monitor);
-    }
-
-    return apiFetch(`/monitors/${monitor.id}/check`, { method: "POST" });
+    return executeBrowserCheck(monitor, { historyOnly: true });
   },
 
   async GET_HISTORY(msg) {

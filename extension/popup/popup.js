@@ -308,12 +308,9 @@
       if (result?.error) {
         btn.innerHTML = "❌ Error";
         btn.style.color = "var(--danger)";
-      } else if (result?.changed) {
-        btn.innerHTML = "✅ Changed!";
+      } else if (result?.value) {
+        btn.innerHTML = `✅ ${truncate(result.value, 18)}`;
         btn.style.color = "var(--success)";
-      } else if (result?.queued) {
-        btn.innerHTML = "⏳ Queued";
-        btn.style.color = "var(--accent-light)";
       } else {
         btn.innerHTML = "✅ OK";
         btn.style.color = "var(--success)";

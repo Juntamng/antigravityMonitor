@@ -58,10 +58,10 @@ Implemented in `extension/popup/popup.html` and `extension/popup/popup.js`:
   - delete monitor,
   - trigger immediate check (`Now`),
   - open history.
-- Immediate check UX:
-  - fire-and-forget check request,
-  - polling monitor data until fresh `last_checked`,
-  - success/fallback button state handling.
+- Immediate check UX ("Check Now"):
+  - extension opens a hidden tab, scrapes the selector, posts to `manual-check-result`,
+  - writes a history row only (does not update `last_value`, alerts, or agent schedule),
+  - button shows captured value or error; monitor card still reflects last scheduled check.
 - Alerts banner in popup:
   - displays unread changes,
   - supports dismiss per alert row,
@@ -78,12 +78,13 @@ Implemented in `extension/background.js`:
 - Alarm-driven periodic jobs:
   - **browser-checks alarm**: pulls monitors pending browser-assisted checks and executes them in real Chrome tabs.
   - **poll-alerts alarm**: fetches unacknowledged alerts, stores unread alerts locally, sets red badge, displays in-page toasts, emits OS notifications, and acknowledges alerts back to service.
-- Browser-assisted fallback execution:
+- Browser-assisted execution (scheduled / pending-flag checks):
   - opens hidden tab,
   - waits for load + SPA settle delay,
   - polls selector for value,
-  - posts result (`value` or `error`) back to service,
+  - posts result to `browser-result` (`value` or `error`) for full pipeline updates,
   - closes tab reliably in `finally`.
+- Manual "Check Now" uses the same tab scrape but posts to `manual-check-result` (history only).
 
 ### 2.5 Local Service Runtime and API
 
@@ -196,15 +197,21 @@ flowchart TD
 - **Response**: `{ "ok": true }`.
 
 ### `POST /monitors/:id/check`
-- **Purpose**: trigger immediate check (outside cron cadence).
-- **Response**: `{ "ok": true, "last_value": ... }` or error payload.
+- **Purpose**: legacy queue path — sets `pending_browser_check` (and for agent monitors, bumps `next_check_at`). Popup "Check Now" does not use this endpoint.
+- **Response**: `{ "ok": true, "queued": "agent" | "extension", ... }`.
+
+### `POST /monitors/:id/manual-check-result`
+- **Purpose**: ingest output from popup "Check Now" (immediate browser scrape).
+- **Request**: `{ value, error }`.
+- **Behavior**: inserts one `history` row only; does not update `monitors`, alerts, or scheduling.
+- **Response**: `{ "ok": true, "value" }` or `{ "ok": true, "error": "..." }`.
 
 ### `GET /monitors/pending-browser-checks`
 - **Purpose**: provide monitors flagged for browser-assisted fallback checks.
 - **Response**: array of monitor descriptors (`id`, `label`, `url`, `selector`).
 
 ### `POST /monitors/:id/browser-result`
-- **Purpose**: ingest browser-assisted check output from extension.
+- **Purpose**: ingest scheduled or pending-flag browser-assisted check output from extension.
 - **Request**: `{ value, error }`.
 - **Behavior**:
   - always clears pending flag,
