@@ -76,7 +76,7 @@ Implemented in `extension/background.js`:
 - Handles monitor CRUD, history retrieval, health checks, and immediate checks.
 - Maintains pending picked element in session storage and opens popup for confirmation.
 - Alarm-driven periodic jobs:
-  - **browser-checks alarm**: pulls monitors pending browser-assisted checks and executes them in real Chrome tabs.
+  - **extension-checks alarm**: pulls extension-mode monitors whose `next_check_at` is due and executes them in real Chrome tabs.
   - **poll-alerts alarm**: fetches unacknowledged alerts, stores unread alerts locally, sets red badge, displays in-page toasts, emits OS notifications, and acknowledges alerts back to service.
 - Browser-assisted execution (scheduled / pending-flag checks):
   - opens hidden tab,
@@ -98,8 +98,7 @@ Implemented in `service/index.js` and `service/api.js`:
   - `GET /monitors`
   - `POST /monitors`
   - `DELETE /monitors/:id`
-  - `POST /monitors/:id/check`
-  - `GET /monitors/pending-browser-checks`
+  - `GET /monitors/due-extension-checks`
   - `POST /monitors/:id/browser-result`
   - `GET /monitors/:id/history`
   - `GET /alerts/pending`
@@ -196,18 +195,14 @@ flowchart TD
 - **Purpose**: remove monitor and unschedule.
 - **Response**: `{ "ok": true }`.
 
-### `POST /monitors/:id/check`
-- **Purpose**: legacy queue path — sets `pending_browser_check` (and for agent monitors, bumps `next_check_at`). Popup "Check Now" does not use this endpoint.
-- **Response**: `{ "ok": true, "queued": "agent" | "extension", ... }`.
-
 ### `POST /monitors/:id/manual-check-result`
 - **Purpose**: ingest output from popup "Check Now" (immediate browser scrape).
 - **Request**: `{ value, error }`.
 - **Behavior**: inserts one `history` row only; does not update `monitors`, alerts, or scheduling.
 - **Response**: `{ "ok": true, "value" }` or `{ "ok": true, "error": "..." }`.
 
-### `GET /monitors/pending-browser-checks`
-- **Purpose**: provide monitors flagged for browser-assisted fallback checks.
+### `GET /monitors/due-extension-checks`
+- **Purpose**: provide extension-mode monitors whose `next_check_at` is due for a browser-assisted check.
 - **Response**: array of monitor descriptors (`id`, `label`, `url`, `selector`).
 
 ### `POST /monitors/:id/browser-result`
