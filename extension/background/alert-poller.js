@@ -81,7 +81,18 @@ async function handleAlertPolling() {
     const { unreadAlerts = [] } =
       await chrome.storage.local.get("unreadAlerts");
     const existingIds = new Set(unreadAlerts.map((a) => a.id));
-    const newAlerts = alerts.filter((a) => !existingIds.has(a.id));
+    const newAlerts = [];
+    for (const alert of alerts.filter((a) => !existingIds.has(a.id))) {
+      if (await isAlertTransitionSuppressed(alert)) {
+        try {
+          await apiFetch(`/alerts/${alert.id}/ack`, { method: "POST" });
+        } catch {
+          /* retry next poll */
+        }
+        continue;
+      }
+      newAlerts.push(alert);
+    }
 
     if (newAlerts.length === 0) return;
 

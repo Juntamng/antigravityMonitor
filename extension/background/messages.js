@@ -149,7 +149,8 @@ const messageHandlers = {
   },
 
   async GET_HISTORY(msg) {
-    return apiFetch(`/monitors/${msg.payload.id}/history`);
+    const history = await apiFetch(`/monitors/${msg.payload.id}/history`);
+    return mergeHistoryWithOptimistic(msg.payload.id, history);
   },
 
   async GET_UNREAD_ALERTS() {

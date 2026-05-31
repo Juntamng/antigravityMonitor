@@ -17,6 +17,7 @@ importScripts(
   "background/browser-check.js",
   "background/badge.js",
   "background/alert-poller.js",
+  "background/manual-check.js",
   "background/messages.js"
 );
 

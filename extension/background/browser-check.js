@@ -47,27 +47,48 @@ async function executeBrowserCheck(monitor, options = {}) {
 
       const result = results?.[0]?.result || { error: "No result" };
 
-      checkResult = await apiFetch(resultPath, {
-        method: "POST",
-        body: JSON.stringify(result),
-      });
-
-      await applyScheduledCacheUpdate(result);
-
-      console.log(`[bg] Browser check completed for monitor ${monitor.id}`);
+      if (historyOnly) {
+        const optimistic = await applyOptimisticManualCheck(monitor, result);
+        persistManualCheckResult(monitor, result).catch(() => {});
+        checkResult = { ok: true, ...optimistic };
+        console.log(
+          `[bg] Manual check (optimistic) completed for monitor ${monitor.id}`
+        );
+      } else {
+        checkResult = await apiFetch(resultPath, {
+          method: "POST",
+          body: JSON.stringify(result),
+        });
+        await applyScheduledCacheUpdate(result);
+        console.log(`[bg] Browser check completed for monitor ${monitor.id}`);
+      }
     } catch (err) {
       console.error(
         `[bg] Browser check failed for monitor ${monitor.id}:`,
         err.message
       );
-      try {
-        checkResult = await apiFetch(resultPath, {
-          method: "POST",
-          body: JSON.stringify({ error: err.message }),
-        });
-        await applyScheduledCacheUpdate({ error: err.message });
-      } catch (resultErr) {
-        checkResult = { error: resultErr.message || err.message };
+      const errorPayload = { error: err.message };
+      if (historyOnly) {
+        try {
+          const optimistic = await applyOptimisticManualCheck(
+            monitor,
+            errorPayload
+          );
+          persistManualCheckResult(monitor, errorPayload).catch(() => {});
+          checkResult = { ok: true, ...optimistic };
+        } catch {
+          checkResult = { error: err.message };
+        }
+      } else {
+        try {
+          checkResult = await apiFetch(resultPath, {
+            method: "POST",
+            body: JSON.stringify(errorPayload),
+          });
+          await applyScheduledCacheUpdate(errorPayload);
+        } catch (resultErr) {
+          checkResult = { error: resultErr.message || err.message };
+        }
       }
     } finally {
       await resetReusableMonitorTabToBlank(tabId);

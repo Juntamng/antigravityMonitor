@@ -221,6 +221,13 @@ router.post("/monitors/:id/manual-check-result", requireAuth, withUserClient, as
     if (bodyError) {
       return res.json({ ok: true, error: bodyError });
     }
+
+    const { error: upErr } = await sb
+      .from("monitors")
+      .update({ last_value: value })
+      .eq("id", id);
+    if (upErr) throw upErr;
+
     res.json({ ok: true, value });
   } catch (err) {
     res.status(500).json({ error: err.message });

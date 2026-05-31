@@ -21,6 +21,47 @@
   const historyList = document.getElementById("history-list");
 
   let monitors = [];
+  let historyMonitorId = null;
+
+  function renderHistoryEntries(history) {
+    if (!history || history.length === 0) {
+      historyList.innerHTML =
+        '<div style="padding:20px;text-align:center;color:var(--text-muted)">No history yet</div>';
+      return;
+    }
+
+    const displayHistory = dedupeConsecutiveHistory(history);
+    historyList.innerHTML = displayHistory
+      .map(
+        (h) => `
+        <div class="history-entry">
+          <div class="history-dot ${h.error ? "error" : ""}"></div>
+          <div class="history-content">
+            ${
+              h.error
+                ? `<div class="history-error">${esc(h.error)}</div>`
+                : `<div class="history-value">${esc(truncate(h.value, 100))}</div>`
+            }
+            <div class="history-time">${relativeTime(h.checked_at)}</div>
+          </div>
+        </div>
+      `
+      )
+      .join("");
+  }
+
+  async function refreshHistoryView(monitorId) {
+    if (!historyMonitorId || String(historyMonitorId) !== String(monitorId)) {
+      return;
+    }
+    try {
+      const history = await sendMsg(MSG.GET_HISTORY, { id: monitorId });
+      if (history?.error) throw new Error(history.error);
+      renderHistoryEntries(history);
+    } catch {
+      /* keep optimistic rows visible */
+    }
+  }
 
   function relativeTime(dateStr) {
     if (!dateStr) return "never";
@@ -192,6 +233,33 @@
     try {
       const result = await sendMsg(MSG.CHECK_MONITOR, monitor);
 
+      if (result?.monitor) {
+        const idx = monitors.findIndex(
+          (m) => String(m.id) === String(result.monitor.id)
+        );
+        if (idx >= 0) {
+          monitors[idx] = result.monitor;
+        }
+        renderMonitors();
+      }
+
+      if (result?.alerted) {
+        loadAlerts();
+      }
+
+      if (
+        result?.historyEntry &&
+        historyMonitorId &&
+        String(historyMonitorId) === String(id)
+      ) {
+        try {
+          const history = await sendMsg(MSG.GET_HISTORY, { id });
+          if (!history?.error) renderHistoryEntries(history);
+        } catch {
+          /* keep spinner / prior rows */
+        }
+      }
+
       if (result?.error) {
         btn.innerHTML = "❌ Error";
         btn.style.color = "var(--danger)";
@@ -202,8 +270,6 @@
         btn.innerHTML = "✅ OK";
         btn.style.color = "var(--success)";
       }
-
-      setTimeout(() => loadMonitors(), 1200);
     } catch {
       btn.innerHTML = "❌ Failed";
       btn.style.color = "var(--danger)";
@@ -219,6 +285,7 @@
   async function handleShowHistory(e) {
     const id = e.currentTarget.dataset.id;
     const monitor = monitors.find((m) => String(m.id) === String(id));
+    historyMonitorId = id;
 
     monitorsSection.classList.add("hidden");
     pickerBar.classList.add("hidden");
@@ -230,33 +297,8 @@
 
     try {
       const history = await sendMsg(MSG.GET_HISTORY, { id });
-
       if (history?.error) throw new Error(history.error);
-      if (!history || history.length === 0) {
-        historyList.innerHTML =
-          '<div style="padding:20px;text-align:center;color:var(--text-muted)">No history yet</div>';
-        return;
-      }
-
-      const displayHistory = dedupeConsecutiveHistory(history);
-
-      historyList.innerHTML = displayHistory
-        .map(
-          (h) => `
-        <div class="history-entry">
-          <div class="history-dot ${h.error ? "error" : ""}"></div>
-          <div class="history-content">
-            ${
-              h.error
-                ? `<div class="history-error">${esc(h.error)}</div>`
-                : `<div class="history-value">${esc(truncate(h.value, 100))}</div>`
-            }
-            <div class="history-time">${relativeTime(h.checked_at)}</div>
-          </div>
-        </div>
-      `
-        )
-        .join("");
+      renderHistoryEntries(history);
     } catch {
       historyList.innerHTML =
         '<div style="padding:20px;text-align:center;color:var(--text-muted)">Failed to load history</div>';
@@ -278,6 +320,7 @@
   }
 
   historyBack.addEventListener("click", () => {
+    historyMonitorId = null;
     monitorsSection.classList.remove("hidden");
     pickerBar.classList.remove("hidden");
     historySection.classList.remove("active");
@@ -294,6 +337,12 @@
     if (msg.type === MSG.MONITORS_UPDATED && Array.isArray(msg.payload)) {
       monitors = msg.payload;
       renderMonitors();
+    }
+    if (msg.type === MSG.ALERTS_UPDATED) {
+      loadAlerts();
+    }
+    if (msg.type === MSG.HISTORY_UPDATED && msg.payload?.monitorId) {
+      refreshHistoryView(msg.payload.monitorId);
     }
   });
 
