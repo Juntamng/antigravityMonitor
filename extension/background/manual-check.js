@@ -101,7 +101,40 @@ async function mergeHistoryWithOptimistic(monitorId, backendHistory) {
   });
 }
 
-async function pushUnreadClientAlert(monitor, oldValue, newValue) {
+// Content script files required for in-page toast injection.
+// Must stay in sync with the manifest content_scripts declaration.
+const TOAST_SCRIPT_FILES = [
+  "lib/utils.js",
+  "lib/dom-extract.js",
+  "lib/constants.js",
+  "content/picker.js",
+  "content/save-panel.js",
+  "content/toast.js",
+  "content.js",
+];
+
+/**
+ * Send a SHOW_TOAST message to a tab. If the content script is not yet
+ * present (e.g. a tab that was open before the extension was installed),
+ * inject it on demand and retry — mirrors the ACTIVATE_PICKER pattern.
+ */
+async function sendToastWithInject(tabId, payload) {
+  if (await sendToastToTab(tabId, payload)) return true;
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    const url = tab.url || tab.pendingUrl || "";
+    if (!url.startsWith("http://") && !url.startsWith("https://")) return false;
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: TOAST_SCRIPT_FILES,
+    });
+    return sendToastToTab(tabId, payload);
+  } catch {
+    return false;
+  }
+}
+
+async function pushUnreadClientAlert(monitor, oldValue, newValue, excludeTabId = null) {
   const key = PAGE_MONITOR_CONSTANTS.STORAGE.UNREAD_ALERTS;
   const alert = {
     id: `client-${monitor.id}-${Date.now()}`,
@@ -128,8 +161,42 @@ async function pushUnreadClientAlert(monitor, oldValue, newValue) {
     message: `"${PAGE_MONITOR_UTILS.truncate(oldValue)}" → "${PAGE_MONITOR_UTILS.truncate(newValue)}"`,
   });
 
+  const toastPayload = {
+    label: alert.monitor_label,
+    oldValue: alert.old_value,
+    newValue: alert.new_value,
+  };
+
+  // 1. Prefer the user's active visible tab (the page behind the popup).
+  //    Use dynamic injection so pre-existing tabs (opened before the
+  //    extension was installed) can still receive the toast.
   try {
-    const tabs = await chrome.tabs.query({});
+    let [activeTab] = await chrome.tabs.query({
+      active: true,
+      lastFocusedWindow: true,
+    });
+    if (!activeTab?.id) {
+      // Popup window may be focused; fall back to any active http/https tab.
+      const allActive = await chrome.tabs.query({ active: true });
+      activeTab = allActive.find((t) => /^https?:/.test(t.url || ""));
+    }
+    if (activeTab?.id && activeTab.id !== excludeTabId) {
+      const sent = await sendToastWithInject(activeTab.id, toastPayload);
+      if (sent) return alert;
+    }
+  } catch {
+    /* fall through to broadcast */
+  }
+
+  // 2. Fall back: try the URL-matched tab, then broadcast to all remaining tabs.
+  //    The scraper tab is excluded so it does not win the URL match while
+  //    sitting as a hidden pinned background tab.
+  try {
+    const allTabs = await chrome.tabs.query({});
+    const tabs =
+      excludeTabId != null
+        ? allTabs.filter((t) => t.id !== excludeTabId)
+        : allTabs;
     const shown = await showAlertToast(monitor, alert, tabs);
     if (!shown) {
       await broadcastAlertToast(alert, tabs);
@@ -144,7 +211,8 @@ async function pushUnreadClientAlert(monitor, oldValue, newValue) {
 /**
  * Apply cache/history/alert updates immediately after scrape (before backend returns).
  */
-async function applyOptimisticManualCheck(monitor, scrapeResult) {
+async function applyOptimisticManualCheck(monitor, scrapeResult, options = {}) {
+  const { excludeTabId = null } = options;
   const checkedAt = new Date().toISOString();
   const oldValue = monitor.last_value ?? null;
   const hasError = Boolean(scrapeResult?.error);
@@ -175,8 +243,9 @@ async function applyOptimisticManualCheck(monitor, scrapeResult) {
     oldValue !== newValue;
 
   let alerted = false;
+  let alert = null;
   if (changed) {
-    await pushUnreadClientAlert(monitor, oldValue, newValue);
+    alert = await pushUnreadClientAlert(monitor, oldValue, newValue, excludeTabId);
     alerted = true;
   }
 
@@ -190,6 +259,7 @@ async function applyOptimisticManualCheck(monitor, scrapeResult) {
     error: scrapeResult?.error,
     changed,
     alerted,
+    alert,
     monitor: updated,
     historyEntry,
   };

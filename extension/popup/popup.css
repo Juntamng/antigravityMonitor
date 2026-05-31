@@ -66,7 +66,17 @@ body::-webkit-scrollbar-thumb {
   justify-content: space-between;
   padding: 16px 18px 12px;
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(99, 102, 241, 0.06), transparent);
+  background: linear-gradient(
+    180deg,
+    rgba(99, 102, 241, 0.1),
+    rgba(15, 15, 26, 0.88)
+  );
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
 }
 
 .header-left {
@@ -232,19 +242,6 @@ body::-webkit-scrollbar-thumb {
   color: var(--warning);
 }
 
-.alert-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 18px;
-  border-top: 1px solid rgba(255, 255, 255, 0.03);
-  transition: background var(--transition);
-}
-
-.alert-row:hover {
-  background: rgba(245, 158, 11, 0.04);
-}
-
 .alert-indicator {
   width: 6px;
   height: 6px;
@@ -287,6 +284,121 @@ body::-webkit-scrollbar-thumb {
   max-width: 100px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Alert Stacks (grouped by monitor) ──────────────── */
+
+.alert-stack {
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.alert-stack-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 8px 18px;
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition);
+}
+
+.alert-stack-header:hover {
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.alert-favicon-wrap {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.alert-favicon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  border-radius: 3px;
+}
+
+.alert-favicon-fallback {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.alert-arrow {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.alert-count-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent-light);
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.28);
+  padding: 2px 7px;
+  border-radius: 20px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+.alert-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.25s ease;
+}
+
+.alert-stack.expanded .alert-chevron {
+  transform: rotate(90deg);
+}
+
+/* Smooth expand/collapse via CSS grid */
+.alert-stack-entries {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease;
+}
+
+.alert-stack.expanded .alert-stack-entries {
+  grid-template-rows: 1fr;
+}
+
+.alert-stack-entries-inner {
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.18);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.alert-stack-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 46px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  transition: background var(--transition);
+}
+
+.alert-stack-entry:last-child {
+  border-bottom: none;
+}
+
+.alert-stack-entry:hover {
+  background: rgba(245, 158, 11, 0.04);
+}
+
+.alert-stack-entry .alert-values {
+  flex: 1;
+  min-width: 0;
+}
+
+.alert-entry-time {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
   white-space: nowrap;
 }
 
@@ -399,6 +511,13 @@ select.form-input {
   flex-shrink: 0;
 }
 
+.monitor-favicon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  border-radius: 3px;
+}
+
 .monitor-info {
   flex: 1;
   min-width: 0;
@@ -413,12 +532,21 @@ select.form-input {
   white-space: nowrap;
 }
 
+.monitor-url-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+
 .monitor-url {
   font-size: 10px;
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+  flex: 1;
 }
 
 .monitor-value-row {
@@ -451,6 +579,32 @@ select.form-input {
   display: flex;
   gap: 4px;
   padding: 4px 0 0 42px;
+}
+
+.open-url-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 2px 3px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition), background var(--transition);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.monitor-card:hover .open-url-btn {
+  opacity: 0.6;
+}
+
+.open-url-btn:hover {
+  opacity: 1 !important;
+  color: var(--accent-light);
+  background: var(--accent-glow);
 }
 
 /* ── History View ────────────────────────────────────── */

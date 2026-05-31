@@ -48,7 +48,9 @@ async function executeBrowserCheck(monitor, options = {}) {
       const result = results?.[0]?.result || { error: "No result" };
 
       if (historyOnly) {
-        const optimistic = await applyOptimisticManualCheck(monitor, result);
+        const optimistic = await applyOptimisticManualCheck(monitor, result, {
+          excludeTabId: tabId,
+        });
         persistManualCheckResult(monitor, result).catch(() => {});
         checkResult = { ok: true, ...optimistic };
         console.log(
@@ -72,7 +74,8 @@ async function executeBrowserCheck(monitor, options = {}) {
         try {
           const optimistic = await applyOptimisticManualCheck(
             monitor,
-            errorPayload
+            errorPayload,
+            { excludeTabId: tabId }
           );
           persistManualCheckResult(monitor, errorPayload).catch(() => {});
           checkResult = { ok: true, ...optimistic };

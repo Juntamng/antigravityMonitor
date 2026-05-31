@@ -23,7 +23,42 @@
     }
   }
 
+  const TOAST_DURATION = 7000;
+
+  // Ensure the shared keyframe stylesheet exists. picker.js creates the same
+  // element via ensurePickerStyles(), but that only runs when the picker is
+  // activated. The toast can appear on any page session regardless of whether
+  // the picker was ever opened, so we must guarantee the animations are present.
+  function ensureStyles() {
+    if (document.getElementById("__pcm-styles")) return;
+    const style = document.createElement("style");
+    style.id = "__pcm-styles";
+    style.textContent = `
+      @keyframes __pcm-slideDown {
+        from { opacity:0; transform: translateX(-50%) translateY(-20px); }
+        to   { opacity:1; transform: translateX(-50%) translateY(0); }
+      }
+      @keyframes __pcm-fadeIn {
+        from { opacity:0; transform: translateY(20px); }
+        to   { opacity:1; transform: translateY(0); }
+      }
+      @keyframes __pcm-progress {
+        from { width: 100%; }
+        to   { width: 0%; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function dismissToast(toast) {
+    toast.style.transition = "opacity 0.3s, transform 0.3s";
+    toast.style.opacity = "0";
+    toast.style.transform = "translateY(20px)";
+    setTimeout(() => toast.remove(), 300);
+  }
+
   function showToast(data) {
+    ensureStyles();
     const { label, oldValue, newValue } = data;
 
     const toast = document.createElement("div");
@@ -62,22 +97,42 @@
         </span>
       </div>
       <div style="height:3px;background:#1e293b;border-radius:2px;margin-top:10px;overflow:hidden;">
-        <div style="height:100%;background:linear-gradient(90deg,#6366f1,#a78bfa);border-radius:2px;animation:__pcm-progress 5s linear forwards;"></div>
+        <div id="__pcm-toast-progress" style="height:100%;background:linear-gradient(90deg,#6366f1,#a78bfa);border-radius:2px;animation:__pcm-progress ${TOAST_DURATION / 1000}s linear forwards;"></div>
       </div>
     `;
 
     document.body.appendChild(toast);
 
-    toast.querySelector("#__pcm-toast-close")?.addEventListener("click", () => {
-      toast.remove();
+    const progressBar = toast.querySelector("#__pcm-toast-progress");
+
+    // Hover-to-pause: track remaining ms so multiple hover cycles work correctly.
+    let remaining = TOAST_DURATION;
+    let startTime = Date.now();
+    let dismissTimer;
+
+    function scheduleDismiss(ms) {
+      clearTimeout(dismissTimer);
+      dismissTimer = setTimeout(() => dismissToast(toast), ms);
+    }
+
+    scheduleDismiss(remaining);
+
+    toast.addEventListener("mouseenter", () => {
+      remaining -= Date.now() - startTime;
+      clearTimeout(dismissTimer);
+      progressBar.style.animationPlayState = "paused";
     });
 
-    setTimeout(() => {
-      toast.style.transition = "opacity 0.3s, transform 0.3s";
-      toast.style.opacity = "0";
-      toast.style.transform = "translateY(20px)";
-      setTimeout(() => toast.remove(), 300);
-    }, 5000);
+    toast.addEventListener("mouseleave", () => {
+      startTime = Date.now();
+      progressBar.style.animationPlayState = "running";
+      scheduleDismiss(remaining);
+    });
+
+    toast.querySelector("#__pcm-toast-close")?.addEventListener("click", () => {
+      clearTimeout(dismissTimer);
+      toast.remove();
+    });
 
     playChime();
   }
