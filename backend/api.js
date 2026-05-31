@@ -78,12 +78,14 @@ function addMinutesIso(iso, minutes) {
 
 // ── Health ──────────────────────────────────────────────
 
+// Liveness probe — returns { ok: true }, no auth.
 router.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
 // ── Auth profile ────────────────────────────────────────
 
+// Return the authenticated user's profile (id, email, metadata).
 router.get("/me", requireAuth, (req, res) => {
   const u = req.user;
   res.json({
@@ -95,6 +97,7 @@ router.get("/me", requireAuth, (req, res) => {
 
 // ── Monitors (authenticated) ────────────────────────────
 
+// List the user's active monitors, each enriched with last_checked.
 router.get("/monitors", requireAuth, withUserClient, async (req, res) => {
   try {
     const sb = req.supabaseUser;
@@ -113,6 +116,7 @@ router.get("/monitors", requireAuth, withUserClient, async (req, res) => {
   }
 });
 
+// Create a new monitor for the user (defaults to agent execution mode).
 router.post("/monitors", requireAuth, withUserClient, async (req, res) => {
   try {
     const {
@@ -156,6 +160,7 @@ router.post("/monitors", requireAuth, withUserClient, async (req, res) => {
   }
 });
 
+// Soft-delete a monitor by marking it inactive.
 router.delete("/monitors/:id", requireAuth, withUserClient, async (req, res) => {
   try {
     const id = req.params.id;
@@ -169,73 +174,7 @@ router.delete("/monitors/:id", requireAuth, withUserClient, async (req, res) => 
   }
 });
 
-/**
- * Legacy queue path (popup uses immediate browser + manual-check-result instead).
- * Extension monitors → pending_browser_check; agent monitors → next_check_at + pending flag.
- */
-router.post("/monitors/:id/check", requireAuth, withUserClient, async (req, res) => {
-  try {
-    const id = req.params.id;
-    const sb = req.supabaseUser;
-
-    const { data: monitor, error: fetchErr } = await sb
-      .from("monitors")
-      .select("*")
-      .eq("id", id)
-      .eq("active", true)
-      .maybeSingle();
-
-    if (fetchErr) throw fetchErr;
-    if (!monitor) {
-      return res.status(404).json({ error: "Monitor not found" });
-    }
-
-    const now = new Date().toISOString();
-    if (monitor.execution_mode === "agent") {
-      const { error: upErr } = await sb
-        .from("monitors")
-        .update({ next_check_at: now, pending_browser_check: true })
-        .eq("id", id);
-      if (upErr) throw upErr;
-      return res.json({
-        ok: true,
-        queued: "agent",
-        message: "Agent will pick up this monitor on its next poll",
-      });
-    }
-
-    const { error: upErr } = await sb
-      .from("monitors")
-      .update({ pending_browser_check: true })
-      .eq("id", id);
-    if (upErr) throw upErr;
-
-    return res.json({
-      ok: true,
-      queued: "extension",
-      message: "Browser-assisted check queued for the extension",
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.get("/monitors/pending-browser-checks", requireAuth, withUserClient, async (req, res) => {
-  try {
-    const sb = req.supabaseUser;
-    const { data, error } = await sb
-      .from("monitors")
-      .select("id, label, url, selector")
-      .eq("active", true)
-      .eq("pending_browser_check", true);
-
-    if (error) throw error;
-    res.json(data || []);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
+// List extension monitors whose next_check_at is due.
 router.get("/monitors/due-extension-checks", requireAuth, withUserClient, async (req, res) => {
   try {
     const sb = req.supabaseUser;
@@ -254,6 +193,7 @@ router.get("/monitors/due-extension-checks", requireAuth, withUserClient, async 
   }
 });
 
+// Record a manual/ad-hoc check result into history (no scheduling/alerts).
 router.post("/monitors/:id/manual-check-result", requireAuth, withUserClient, async (req, res) => {
   try {
     const id = req.params.id;
@@ -287,6 +227,7 @@ router.post("/monitors/:id/manual-check-result", requireAuth, withUserClient, as
   }
 });
 
+// Persist a scheduled browser-check result: write history, raise alert on change, reschedule.
 router.post("/monitors/:id/browser-result", requireAuth, withUserClient, async (req, res) => {
   try {
     const id = req.params.id;
@@ -360,6 +301,7 @@ router.post("/monitors/:id/browser-result", requireAuth, withUserClient, async (
   }
 });
 
+// Return the last 100 history entries for a monitor.
 router.get("/monitors/:id/history", requireAuth, withUserClient, async (req, res) => {
   try {
     const id = req.params.id;
@@ -378,6 +320,7 @@ router.get("/monitors/:id/history", requireAuth, withUserClient, async (req, res
   }
 });
 
+// List unacknowledged alerts, enriched with their monitor labels.
 router.get("/alerts/pending", requireAuth, withUserClient, async (req, res) => {
   try {
     const sb = req.supabaseUser;
@@ -407,6 +350,7 @@ router.get("/alerts/pending", requireAuth, withUserClient, async (req, res) => {
   }
 });
 
+// Acknowledge (mark as read) a single alert.
 router.post("/alerts/:id/ack", requireAuth, withUserClient, async (req, res) => {
   try {
     const id = req.params.id;
@@ -421,6 +365,7 @@ router.post("/alerts/:id/ack", requireAuth, withUserClient, async (req, res) => 
 
 // ── Agent (service role on server) ──────────────────────
 
+// Agent check-in: upsert agent status/last_seen into the registry.
 router.post("/agent/heartbeat", requireAgent, async (req, res) => {
   try {
     if (!supabaseAdmin) {
@@ -452,6 +397,7 @@ router.post("/agent/heartbeat", requireAgent, async (req, res) => {
   }
 });
 
+// Return due agent-mode monitors assigned to the calling agent.
 router.get("/agent/tasks", requireAgent, async (req, res) => {
   try {
     if (!supabaseAdmin) {
@@ -476,6 +422,7 @@ router.get("/agent/tasks", requireAgent, async (req, res) => {
   }
 });
 
+// Persist an agent's check result: write history, raise alert on change, reschedule.
 router.post("/agent/result", requireAgent, async (req, res) => {
   try {
     if (!supabaseAdmin) {
