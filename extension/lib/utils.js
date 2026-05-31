@@ -32,10 +32,31 @@
     return String(url || "").replace(/\/$/, "");
   }
 
+  function historyEntryKey(entry) {
+    if (entry?.error) return `error:${entry.error}`;
+    return `value:${entry?.value ?? ""}`;
+  }
+
+  /** Keep newest row per consecutive run of identical content (history is checked_at desc). */
+  function dedupeConsecutiveHistory(entries) {
+    if (!Array.isArray(entries) || entries.length === 0) return [];
+    const deduped = [];
+    let lastKey = null;
+    for (const entry of entries) {
+      const key = historyEntryKey(entry);
+      if (key !== lastKey) {
+        deduped.push(entry);
+        lastKey = key;
+      }
+    }
+    return deduped;
+  }
+
   global.PAGE_MONITOR_UTILS = {
     truncate,
     esc,
     sendMsg,
     normalizeBackendUrl,
+    dedupeConsecutiveHistory,
   };
 })(typeof globalThis !== "undefined" ? globalThis : self);

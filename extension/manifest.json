@@ -50,13 +50,5 @@
     "http://*/*",
     "https://antigravitymonitor.onrender.com/*",
     "https://avvadnrovreimjfqbqdl.supabase.co/*"
-  ],
-  "commands": {
-    "activate-picker": {
-      "suggested_key": {
-        "default": "Alt+Shift+P"
-      },
-      "description": "Activate element picker on current page"
-    }
-  }
+  ]
 }

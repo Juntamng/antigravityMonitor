@@ -3,7 +3,7 @@
  */
 
 (() => {
-  const { truncate, esc, sendMsg } = PAGE_MONITOR_UTILS;
+  const { truncate, esc, sendMsg, dedupeConsecutiveHistory } = PAGE_MONITOR_UTILS;
   const { MSG } = PAGE_MONITOR_CONSTANTS;
 
   const statusDot = document.getElementById("status-dot");
@@ -238,7 +238,9 @@
         return;
       }
 
-      historyList.innerHTML = history
+      const displayHistory = dedupeConsecutiveHistory(history);
+
+      historyList.innerHTML = displayHistory
         .map(
           (h) => `
         <div class="history-entry">
@@ -287,6 +289,13 @@
     loadMonitors();
     setInterval(checkHealth, 10000);
   }
+
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.type === MSG.MONITORS_UPDATED && Array.isArray(msg.payload)) {
+      monitors = msg.payload;
+      renderMonitors();
+    }
+  });
 
   async function init() {
     window.PageMonitorAuth.bindAuthForm();

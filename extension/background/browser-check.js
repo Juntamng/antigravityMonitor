@@ -21,6 +21,15 @@ async function executeBrowserCheck(monitor, options = {}) {
     ? `/monitors/${monitor.id}/manual-check-result`
     : `/monitors/${monitor.id}/browser-result`;
 
+  async function applyScheduledCacheUpdate(result) {
+    if (historyOnly) return;
+    const patch = { last_checked: new Date().toISOString() };
+    if (result?.value != null && !result.error) {
+      patch.last_value = result.value;
+    }
+    await patchMonitorInCache(monitor.id, patch);
+  }
+
   return withMonitorTabLock(async () => {
     let tabId = null;
     let checkResult = null;
@@ -43,6 +52,8 @@ async function executeBrowserCheck(monitor, options = {}) {
         body: JSON.stringify(result),
       });
 
+      await applyScheduledCacheUpdate(result);
+
       console.log(`[bg] Browser check completed for monitor ${monitor.id}`);
     } catch (err) {
       console.error(
@@ -54,6 +65,7 @@ async function executeBrowserCheck(monitor, options = {}) {
           method: "POST",
           body: JSON.stringify({ error: err.message }),
         });
+        await applyScheduledCacheUpdate({ error: err.message });
       } catch (resultErr) {
         checkResult = { error: resultErr.message || err.message };
       }

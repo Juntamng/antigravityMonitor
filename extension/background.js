@@ -12,6 +12,7 @@ importScripts(
   "lib/dom-extract.js",
   "background/auth.js",
   "background/api-client.js",
+  "background/monitor-cache.js",
   "background/monitor-tab.js",
   "background/browser-check.js",
   "background/badge.js",

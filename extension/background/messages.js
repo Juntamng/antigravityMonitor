@@ -92,6 +92,7 @@ const messageHandlers = {
 
   async LOGOUT() {
     await setSession(null);
+    await clearMonitorCache();
     setPendingPick(false);
     await syncAlertCountFromStorage();
     return { ok: true };
@@ -115,18 +116,28 @@ const messageHandlers = {
   },
 
   async GET_MONITORS() {
-    return apiFetch("/monitors");
+    return getMonitorsCached();
   },
 
   async CREATE_MONITOR(msg) {
-    return apiFetch("/monitors", {
+    const created = await apiFetch("/monitors", {
       method: "POST",
       body: JSON.stringify(msg.payload),
     });
+    if (created?.id) {
+      await upsertMonitorInCache(created);
+    }
+    return created;
   },
 
   async DELETE_MONITOR(msg) {
-    return apiFetch(`/monitors/${msg.payload.id}`, { method: "DELETE" });
+    const result = await apiFetch(`/monitors/${msg.payload.id}`, {
+      method: "DELETE",
+    });
+    if (result?.ok) {
+      await removeMonitorFromCache(msg.payload.id);
+    }
+    return result;
   },
 
   async CHECK_MONITOR(msg) {
@@ -173,11 +184,5 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .then(sendResponse)
       .catch((err) => sendResponse({ error: err.message }));
     return true;
-  }
-});
-
-chrome.commands.onCommand.addListener(async (command) => {
-  if (command === "activate-picker") {
-    await messageHandlers.ACTIVATE_PICKER({});
   }
 });
