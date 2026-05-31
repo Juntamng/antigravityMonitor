@@ -309,86 +309,6 @@ body::-webkit-scrollbar-thumb {
   color: var(--text-muted);
 }
 
-/* ── Confirm Selection ───────────────────────────────── */
-
-.confirm-section {
-  display: none;
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(99, 102, 241, 0.04), transparent);
-}
-
-.confirm-section.active {
-  display: block;
-  animation: fadeSlide 0.3s ease;
-}
-
-@keyframes fadeSlide {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.confirm-preview {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px;
-  margin-bottom: 12px;
-}
-
-.confirm-preview-row {
-  display: grid;
-  gap: 3px;
-  margin-bottom: 8px;
-  font-size: 11px;
-}
-
-.confirm-preview-row:last-child {
-  margin-bottom: 0;
-}
-
-.confirm-preview-key {
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.confirm-preview-val {
-  color: var(--text-secondary);
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.confirm-preview-code {
-  font-family: monospace;
-  font-size: 11px;
-  color: #cbd5e1;
-  background: rgba(15, 23, 42, 0.65);
-  padding: 5px 8px;
-  border-radius: var(--radius-sm);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.confirm-preview-accent {
-  color: var(--accent-light);
-  background: rgba(30, 41, 59, 0.65);
-  padding: 5px 8px;
-  border-radius: var(--radius-sm);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .form-group {
   margin-bottom: 10px;
 }
@@ -439,16 +359,6 @@ select.form-input {
 }
 
 .form-row .form-group {
-  flex: 1;
-}
-
-.confirm-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.confirm-actions .btn {
   flex: 1;
 }
 

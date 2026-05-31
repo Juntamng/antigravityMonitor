@@ -128,8 +128,8 @@ router.post("/monitors", requireAuth, withUserClient, async (req, res) => {
       assigned_agent = process.env.DEFAULT_AGENT_ID || "home-pc",
     } = req.body;
 
-    // Monitors default to the headless agent path unless explicitly overridden.
-    const execution_mode = req.body.execution_mode || "agent";
+    // Extension-created monitors default to extension checks; agent can pass "agent".
+    const execution_mode = req.body.execution_mode || "extension";
 
     if (!label || !url || !selector) {
       return res.status(400).json({ error: "label, url, and selector are required" });

@@ -3,16 +3,13 @@
  */
 
 (() => {
+  const { truncate, esc, sendMsg } = PAGE_MONITOR_UTILS;
+  const { MSG } = PAGE_MONITOR_CONSTANTS;
+
   const statusDot = document.getElementById("status-dot");
   const alertsBanner = document.getElementById("alerts-banner");
   const alertsList = document.getElementById("alerts-list");
   const dismissAllBtn = document.getElementById("dismiss-all-btn");
-  const confirmSection = document.getElementById("confirm-section");
-  const confirmPreview = document.getElementById("confirm-preview");
-  const monitorLabelInput = document.getElementById("monitor-label");
-  const monitorIntervalInput = document.getElementById("monitor-interval");
-  const cancelConfirmBtn = document.getElementById("cancel-confirm-btn");
-  const saveMonitorBtn = document.getElementById("save-monitor-btn");
   const pickerBar = document.getElementById("picker-bar");
   const pickElementBtn = document.getElementById("pick-element-btn");
   const monitorsSection = document.getElementById("monitors-section");
@@ -23,20 +20,7 @@
   const historyTitle = document.getElementById("history-title");
   const historyList = document.getElementById("history-list");
 
-  let pendingElement = null;
   let monitors = [];
-  let currentView = "list";
-
-  function esc(str) {
-    const div = document.createElement("div");
-    div.textContent = str || "";
-    return div.innerHTML;
-  }
-
-  function truncate(str, max = 60) {
-    if (!str) return "(empty)";
-    return str.length > max ? str.slice(0, max) + "…" : str;
-  }
 
   function relativeTime(dateStr) {
     if (!dateStr) return "never";
@@ -53,18 +37,10 @@
     return `${Math.floor(diff / 86400)}d ago`;
   }
 
-  async function sendMsg(type, payload) {
-    return new Promise((resolve) => {
-      chrome.runtime.sendMessage({ type, payload }, (resp) => {
-        resolve(resp);
-      });
-    });
-  }
-
   async function checkHealth() {
     if (!statusDot) return;
     try {
-      const resp = await sendMsg("GET_HEALTH");
+      const resp = await sendMsg(MSG.GET_HEALTH);
       const base = resp?.activeUrl || "";
       statusDot.className = resp?.ok ? "status-dot online" : "status-dot offline";
       statusDot.title = resp?.ok
@@ -82,7 +58,7 @@
 
   async function loadAlerts() {
     try {
-      const alerts = await sendMsg("GET_UNREAD_ALERTS");
+      const alerts = await sendMsg(MSG.GET_UNREAD_ALERTS);
       if (!alerts || alerts.length === 0) {
         alertsBanner.classList.remove("has-alerts");
         return;
@@ -113,7 +89,7 @@
         btn.addEventListener("click", async (e) => {
           const row = e.target.closest(".alert-row");
           const id = row.dataset.id;
-          await sendMsg("DISMISS_ALERT", { id });
+          await sendMsg(MSG.DISMISS_ALERT, { id });
           row.style.transition = "opacity 0.2s, max-height 0.2s";
           row.style.opacity = "0";
           row.style.maxHeight = "0";
@@ -130,102 +106,13 @@
   }
 
   dismissAllBtn?.addEventListener("click", async () => {
-    await sendMsg("DISMISS_ALL_ALERTS");
+    await sendMsg(MSG.DISMISS_ALL_ALERTS);
     alertsBanner.classList.remove("has-alerts");
     alertsList.innerHTML = "";
   });
 
-  async function checkPendingElement() {
-    const el = await sendMsg("GET_PENDING_ELEMENT");
-    if (el) {
-      await sendMsg("CLOSE_SAVE_PANEL_ACTIVE_TAB");
-      pendingElement = el;
-      showConfirmView();
-    }
-  }
-
-  function showConfirmView() {
-    currentView = "confirm";
-    confirmSection.classList.add("active");
-    pickerBar.classList.add("hidden");
-    monitorsSection.classList.add("hidden");
-    historySection.classList.remove("active");
-
-    const e = pendingElement;
-    confirmPreview.innerHTML = `
-      <div class="confirm-preview-row">
-        <span class="confirm-preview-key">Page</span>
-        <span class="confirm-preview-val">${esc(truncate(e.pageTitle, 50))}</span>
-      </div>
-      <div class="confirm-preview-row">
-        <span class="confirm-preview-key">Selector</span>
-        <span class="confirm-preview-val confirm-preview-code">${esc(truncate(e.selector, 60))}</span>
-      </div>
-      <div class="confirm-preview-row">
-        <span class="confirm-preview-key">Current value</span>
-        <span class="confirm-preview-val confirm-preview-accent">${esc(truncate(e.value, 50))}</span>
-      </div>
-    `;
-
-    monitorLabelInput.value = e.pageTitle ? e.pageTitle.slice(0, 40) : "My Monitor";
-    monitorLabelInput.focus();
-    monitorLabelInput.select();
-  }
-
-  function showListView() {
-    currentView = "list";
-    confirmSection.classList.remove("active");
-    pickerBar.classList.remove("hidden");
-    monitorsSection.classList.remove("hidden");
-    historySection.classList.remove("active");
-    pendingElement = null;
-  }
-
-  cancelConfirmBtn.addEventListener("click", async () => {
-    await sendMsg("CLEAR_PENDING_ELEMENT");
-    showListView();
-  });
-
-  saveMonitorBtn.addEventListener("click", async () => {
-    const label = monitorLabelInput.value.trim();
-    const interval = parseInt(monitorIntervalInput.value, 10);
-
-    if (!label) {
-      monitorLabelInput.style.borderColor = "var(--danger)";
-      monitorLabelInput.focus();
-      return;
-    }
-
-    saveMonitorBtn.disabled = true;
-    saveMonitorBtn.innerHTML = '<span class="spinner"></span> Saving…';
-
-    try {
-      if (!pendingElement) {
-        throw new Error("No pending element to save");
-      }
-
-      const res = await sendMsg("CREATE_MONITOR", {
-        label,
-        url: pendingElement.url,
-        selector: pendingElement.selector,
-        interval_minutes: interval || 15,
-        last_value: pendingElement.value,
-      });
-      if (res?.error) throw new Error(res.error);
-
-      await sendMsg("CLEAR_PENDING_ELEMENT");
-      showListView();
-      loadMonitors();
-    } catch (err) {
-      console.error("Save failed:", err);
-    } finally {
-      saveMonitorBtn.disabled = false;
-      saveMonitorBtn.textContent = "Start Monitoring";
-    }
-  });
-
   pickElementBtn.addEventListener("click", async () => {
-    const resp = await sendMsg("ACTIVATE_PICKER");
+    const resp = await sendMsg(MSG.ACTIVATE_PICKER);
     if (resp?.error) {
       console.warn("Picker activation failed:", resp.error);
       return;
@@ -235,7 +122,7 @@
 
   async function loadMonitors() {
     try {
-      const data = await sendMsg("GET_MONITORS");
+      const data = await sendMsg(MSG.GET_MONITORS);
       if (data?.error) throw new Error(data.error);
       monitors = Array.isArray(data) ? data : [];
       renderMonitors();
@@ -303,7 +190,7 @@
     btn.innerHTML = '<span class="spinner"></span>';
 
     try {
-      const result = await sendMsg("CHECK_MONITOR", monitor);
+      const result = await sendMsg(MSG.CHECK_MONITOR, monitor);
 
       if (result?.error) {
         btn.innerHTML = "❌ Error";
@@ -333,10 +220,8 @@
     const id = e.currentTarget.dataset.id;
     const monitor = monitors.find((m) => String(m.id) === String(id));
 
-    currentView = "history";
     monitorsSection.classList.add("hidden");
     pickerBar.classList.add("hidden");
-    confirmSection.classList.remove("active");
     historySection.classList.add("active");
 
     historyTitle.textContent = `History — ${monitor?.label || "Monitor"}`;
@@ -344,7 +229,7 @@
       '<div style="padding:20px;text-align:center;color:var(--text-muted)"><span class="spinner"></span> Loading…</div>';
 
     try {
-      const history = await sendMsg("GET_HISTORY", { id });
+      const history = await sendMsg(MSG.GET_HISTORY, { id });
 
       if (history?.error) throw new Error(history.error);
       if (!history || history.length === 0) {
@@ -385,20 +270,21 @@
     card.style.transform = "translateX(20px)";
 
     setTimeout(async () => {
-      await sendMsg("DELETE_MONITOR", { id });
+      await sendMsg(MSG.DELETE_MONITOR, { id });
       loadMonitors();
     }, 200);
   }
 
   historyBack.addEventListener("click", () => {
-    showListView();
+    monitorsSection.classList.remove("hidden");
+    pickerBar.classList.remove("hidden");
+    historySection.classList.remove("active");
   });
 
   async function startMainApp() {
     checkHealth();
     loadAlerts();
     loadMonitors();
-    checkPendingElement();
     setInterval(checkHealth, 10000);
   }
 

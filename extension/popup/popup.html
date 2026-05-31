@@ -67,38 +67,6 @@
         <div id="alerts-list"></div>
       </div>
 
-      <div class="confirm-section" id="confirm-section">
-        <div class="section-title">New Monitor</div>
-        <div class="confirm-preview" id="confirm-preview"></div>
-        <div class="form-group">
-          <label class="form-label" for="monitor-label">Label</label>
-          <input
-            type="text"
-            class="form-input"
-            id="monitor-label"
-            placeholder="e.g. Product Price"
-            maxlength="100"
-          />
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="monitor-interval">Check every</label>
-          <select class="form-input" id="monitor-interval">
-            <option value="1">1 minute</option>
-            <option value="5">5 minutes</option>
-            <option value="15" selected>15 minutes</option>
-            <option value="30">30 minutes</option>
-            <option value="60">1 hour</option>
-            <option value="1440">1 day</option>
-          </select>
-        </div>
-        <div class="confirm-actions">
-          <button class="btn btn-ghost" id="cancel-confirm-btn">Cancel</button>
-          <button class="btn btn-primary" id="save-monitor-btn">
-            Start Monitoring
-          </button>
-        </div>
-      </div>
-
       <div class="picker-bar" id="picker-bar">
         <button class="btn btn-primary" id="pick-element-btn">
           🎯 Pick Element
@@ -143,6 +111,8 @@
     </div>
 
     <script src="../config.js"></script>
+    <script src="../lib/utils.js"></script>
+    <script src="../lib/constants.js"></script>
     <script src="auth.js"></script>
     <script src="popup.js"></script>
   </body>

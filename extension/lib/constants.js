@@ -1,0 +1,43 @@
+/**
+ * Shared constants for storage keys, alarms, and message types.
+ */
+globalThis.PAGE_MONITOR_CONSTANTS = {
+  STORAGE: {
+    SESSION: "session",
+    UNREAD_ALERTS: "unreadAlerts",
+    PENDING_ELEMENT: "pendingElement",
+    REUSABLE_MONITOR_TAB_ID: "reusableMonitorTabId",
+  },
+  ALARMS: {
+    EXTENSION_CHECKS: "extension-checks",
+    POLL_ALERTS: "poll-alerts",
+    SESSION_REFRESH: "session-refresh",
+  },
+  MSG: {
+    ELEMENT_PICKED: "ELEMENT_PICKED",
+    CLEAR_PENDING_ELEMENT: "CLEAR_PENDING_ELEMENT",
+    ACTIVATE_PICKER: "ACTIVATE_PICKER",
+    CLOSE_SAVE_PANEL: "CLOSE_SAVE_PANEL",
+    SHOW_SAVE_PANEL: "SHOW_SAVE_PANEL",
+    SHOW_TOAST: "SHOW_TOAST",
+    GET_AUTH_STATE: "GET_AUTH_STATE",
+    LOGOUT: "LOGOUT",
+    REFRESH_SESSION: "REFRESH_SESSION",
+    GOOGLE_LOGIN: "GOOGLE_LOGIN",
+    GET_HEALTH: "GET_HEALTH",
+    GET_MONITORS: "GET_MONITORS",
+    CREATE_MONITOR: "CREATE_MONITOR",
+    DELETE_MONITOR: "DELETE_MONITOR",
+    CHECK_MONITOR: "CHECK_MONITOR",
+    GET_HISTORY: "GET_HISTORY",
+    GET_UNREAD_ALERTS: "GET_UNREAD_ALERTS",
+    DISMISS_ALERT: "DISMISS_ALERT",
+    DISMISS_ALL_ALERTS: "DISMISS_ALL_ALERTS",
+  },
+  EXECUTION_MODE: {
+    EXTENSION: "extension",
+    AGENT: "agent",
+  },
+  SAVE_PANEL_HOST_ID: "__pcm-save-panel-host",
+  SAVE_PANEL_ESC_HANDLER_KEY: "__pcmSavePanelEscHandler",
+};
